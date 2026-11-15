@@ -1,0 +1,307 @@
+import { pgTable, uuid, text, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+
+// ============================================================
+// Multi-Tenant SaaS Schema — Every tenant-owned table has tenant_id (NOT NULL)
+// RLS policies in docs/sql/rls.sql enforce the same at DB level.
+// Money is stored in CENTS (integer) to avoid float errors (GoBD-safe).
+// ============================================================
+
+export const userRoleEnum = pgEnum("user_role", ["root", "super_admin", "tenant_owner", "tenant_staff", "accountant", "end_customer"]);
+export const tenantStatusEnum = pgEnum("tenant_status", ["trial", "active", "past_due", "suspended", "cancelled"]);
+export const invoiceStatusEnum = pgEnum("invoice_status", ["draft", "issued", "paid", "storno", "cancelled"]);
+export const paymentMethodEnum = pgEnum("payment_method", ["cash", "card", "terminal", "online", "sepa", "paypal", "klarna"]);
+export const appointmentStatusEnum = pgEnum("appointment_status", ["scheduled", "confirmed", "completed", "cancelled", "no_show"]);
+
+export const tenants = pgTable("tenants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  profession: text("profession").notNull(), // fahrschule | friseur | kiosk | design | steuerbuero | bekleidung | praxis | apotheke | kuenstler | restaurant | beauty | buchhandlung | schule | baeckerei
+  status: tenantStatusEnum("status").default("trial").notNull(),
+  plan: text("plan").default("starter").notNull(), // starter | pro | business
+  monthly_fee_cents: integer("monthly_fee_cents").default(2900).notNull(),
+  // Commission defaults (tenant level) — overridable per project
+  commission_percent: integer("commission_percent").default(500), // basis points: 500 = 5.00%
+  commission_fixed_cents: integer("commission_fixed_cents").default(30),
+  tax_rate_bp: integer("tax_rate_bp").default(1900), // 1900 = 19%, 700 = 7%
+  ust_idnr: text("ust_idnr"),
+  steuernummer: text("steuernummer"),
+  iban: text("iban"),
+  stripe_account_id: text("stripe_account_id"),
+  terminal_id: text("terminal_id"),
+  fiskaly_client_id: text("fiskaly_client_id"),
+  tse_serial: text("tse_serial"),
+  grace_days: integer("grace_days").default(7),
+  settings: jsonb("settings").default({}),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  email: text("email").notNull().unique(),
+  password_hash: text("password_hash").notNull(),
+  name: text("name").notNull(),
+  role: userRoleEnum("role").notNull(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id),
+  accountant_id: text("accountant_id"), // e.g. ACC-1001 for accountants
+  permissions: jsonb("permissions").default([]), // RBAC granular permissions
+  is_active: boolean("is_active").default(true).notNull(),
+  two_factor_enabled: boolean("two_factor_enabled").default(false).notNull(),
+  impersonated_by: uuid("impersonated_by"),
+  last_login_at: timestamp("last_login_at", { withTimezone: true }),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const sessions = pgTable("sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  user_id: uuid("user_id").references(() => users.id).notNull(),
+  token_hash: text("token_hash").notNull().unique(),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+  ip: text("ip"),
+  user_agent: text("user_agent"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const features = pgTable("features", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  is_enabled: boolean("is_enabled").default(true).notNull(),
+});
+
+export const tenant_features = pgTable("tenant_features", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  feature_key: text("feature_key").notNull(),
+  enabled: boolean("enabled").default(true).notNull(),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  plan: text("plan").notNull(),
+  status: text("status").default("trial").notNull(),
+  monthly_fee_cents: integer("monthly_fee_cents").notNull(),
+  current_period_end: timestamp("current_period_end", { withTimezone: true }),
+  stripe_subscription_id: text("stripe_subscription_id"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const commission_settings = pgTable("commission_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  scope: text("scope").notNull(), // platform | tenant | project
+  tenant_id: uuid("tenant_id").references(() => tenants.id),
+  project_id: uuid("project_id"),
+  percent_bp: integer("percent_bp").notNull(),
+  fixed_cents: integer("fixed_cents").default(0).notNull(),
+  tax_rate_bp: integer("tax_rate_bp").default(1900).notNull(),
+  created_by: uuid("created_by"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const products = pgTable("products", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  sku: text("sku"),
+  barcode: text("barcode"),
+  category: text("category").default("General"),
+  price_cents: integer("price_cents").notNull(),
+  cost_cents: integer("cost_cents").default(0),
+  stock: integer("stock").default(0).notNull(),
+  low_stock_threshold: integer("low_stock_threshold").default(5),
+  variants: jsonb("variants").default([]), // [{size, color, stock, barcode}]
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const services = pgTable("services", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  duration_minutes: integer("duration_minutes").default(30).notNull(),
+  price_cents: integer("price_cents").notNull(),
+  staff_id: uuid("staff_id").references(() => users.id),
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const appointments = pgTable("appointments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  customer_name: text("customer_name").notNull(),
+  customer_email: text("customer_email"),
+  customer_phone: text("customer_phone"),
+  service_id: uuid("service_id").references(() => services.id),
+  staff_id: uuid("staff_id").references(() => users.id),
+  starts_at: timestamp("starts_at", { withTimezone: true }).notNull(),
+  ends_at: timestamp("ends_at", { withTimezone: true }).notNull(),
+  status: appointmentStatusEnum("status").default("scheduled").notNull(),
+  notes: text("notes"),
+  source: text("source").default("dashboard"), // dashboard | public_link | pos
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const invoices = pgTable("invoices", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  number: text("number").notNull(), // sequential per tenant, e.g. 2026-0001
+  type: text("type").default("invoice").notNull(), // invoice | storno | platform_fee
+  status: invoiceStatusEnum("status").default("issued").notNull(),
+  customer_name: text("customer_name"),
+  customer_email: text("customer_email"),
+  subtotal_cents: integer("subtotal_cents").notNull(),
+  tax_cents: integer("tax_cents").notNull(),
+  total_cents: integer("total_cents").notNull(),
+  tax_rate_bp: integer("tax_rate_bp").default(1900).notNull(),
+  storno_of_id: uuid("storno_of_id"),
+  tse_reference: text("tse_reference"), // Fiskaly TSE signature
+  xrechnung_xml: text("xrechnung_xml"),
+  issued_at: timestamp("issued_at", { withTimezone: true }).defaultNow().notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const invoice_items = pgTable("invoice_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  invoice_id: uuid("invoice_id").references(() => invoices.id).notNull(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  unit_price_cents: integer("unit_price_cents").notNull(),
+  total_cents: integer("total_cents").notNull(),
+});
+
+export const transactions = pgTable("transactions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  invoice_id: uuid("invoice_id").references(() => invoices.id),
+  project_id: uuid("project_id"),
+  amount_cents: integer("amount_cents").notNull(),
+  tax_cents: integer("tax_cents").notNull(),
+  commission_cents: integer("commission_cents").notNull(),
+  net_cents: integer("net_cents").notNull(),
+  method: paymentMethodEnum("method").notNull(),
+  status: text("status").default("completed").notNull(),
+  commission_snapshot: jsonb("commission_snapshot").default({}), // frozen rates at time of sale
+  stripe_payment_intent: text("stripe_payment_intent"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const audit_logs = pgTable("audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  actor_id: uuid("actor_id").references(() => users.id),
+  tenant_id: uuid("tenant_id").references(() => tenants.id),
+  action: text("action").notNull(),
+  entity: text("entity").notNull(),
+  entity_id: text("entity_id"),
+  old_value: jsonb("old_value"),
+  new_value: jsonb("new_value"),
+  ip: text("ip"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const accountant_links = pgTable("accountant_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  accountant_user_id: uuid("accountant_user_id").references(() => users.id).notNull(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  status: text("status").default("active").notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id),
+  user_id: uuid("user_id").references(() => users.id),
+  title: text("title").notNull(),
+  body: text("body"),
+  type: text("type").default("info"),
+  is_read: boolean("is_read").default(false).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const projects = pgTable("projects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  client_name: text("client_name"),
+  deadline: timestamp("deadline", { withTimezone: true }),
+  status: text("status").default("open").notNull(),
+  amount_cents: integer("amount_cents").default(0),
+  commission_percent_bp: integer("commission_percent_bp"), // project override
+  commission_fixed_cents: integer("commission_fixed_cents"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const tasks = pgTable("tasks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  project_id: uuid("project_id").references(() => projects.id),
+  title: text("title").notNull(),
+  status: text("status").default("todo").notNull(),
+  due_at: timestamp("due_at", { withTimezone: true }),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const queue_tickets = pgTable("queue_tickets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  number: integer("number").notNull(),
+  status: text("status").default("waiting").notNull(), // waiting | called | done
+  patient_name: text("patient_name"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const orders = pgTable("orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  customer_name: text("customer_name"),
+  customer_email: text("customer_email"),
+  items: jsonb("items").default([]),
+  total_cents: integer("total_cents").notNull(),
+  status: text("status").default("new").notNull(),
+  source: text("source").default("online"), // online | pos | lieferando | uber_eats | wolt
+  requires_prescription: boolean("requires_prescription").default(false).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const loans = pgTable("loans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  member_name: text("member_name").notNull(),
+  book_title: text("book_title").notNull(),
+  loaned_at: timestamp("loaned_at", { withTimezone: true }).defaultNow().notNull(),
+  due_at: timestamp("due_at", { withTimezone: true }).notNull(),
+  returned_at: timestamp("returned_at", { withTimezone: true }),
+  fine_cents: integer("fine_cents").default(0),
+});
+
+export const gigs = pgTable("gigs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  title: text("title").notNull(),
+  venue: text("venue"),
+  gig_date: timestamp("gig_date", { withTimezone: true }).notNull(),
+  fee_cents: integer("fee_cents").default(0),
+  deposit_cents: integer("deposit_cents").default(0),
+  status: text("status").default("booked").notNull(),
+});
+
+export const recipes = pgTable("recipes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(),
+  flour_kg_per_loaf: integer("flour_kg_per_loaf").default(500), // grams per loaf
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const school_classes = pgTable("school_classes", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  name: text("name").notNull(), // e.g. 5a
+  teacher_name: text("teacher_name"),
+  schedule: jsonb("schedule").default([]),
+  homework: jsonb("homework").default([]),
+  announcements: jsonb("announcements").default([]),
+});
