@@ -1,97 +1,60 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { currentUser } from "@/lib/auth";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tenants, notifications } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
-import { professionByKey } from "@/lib/professions";
-import { LanguageSwitcher } from "@/components/providers";
-import { ensureSeed } from "@/lib/seed";
-import { LogoutButton } from "@/components/logout";
+import { currentUser, hasPermission, isPlatformAdmin } from "@/lib/auth";
+import { professionByKey, professionName } from "@/lib/professions";
+import { AppShell, type NavItem } from "@/components/app-shell";
+import { getI18n, getTheme } from "@/lib/i18n-server";
+import type { DictKey } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
-const NAV = [
-  { href: "/dashboard", label: "📊 Dashboard", key: "dashboard" },
-  { href: "/dashboard/pos", label: "🛒 Kasse (POS)", key: "pos" },
-  { href: "/dashboard/appointments", label: "📅 Termine", key: "appointments" },
-  { href: "/dashboard/products", label: "📦 Produkte & Lager", key: "products" },
-  { href: "/dashboard/invoices", label: "🧾 Rechnungen", key: "invoices" },
-  { href: "/dashboard/accountant", label: "🧮 Steuerberater", key: "accountant" },
-  { href: "/dashboard/ai", label: "🤖 KI-Berater", key: "ai" },
-  { href: "/dashboard/reports", label: "📈 Berichte", key: "reports" },
-  { href: "/dashboard/settings", label: "⚙️ Einstellungen", key: "settings" },
-];
-
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  await ensureSeed();
   const user = await currentUser();
   if (!user) redirect("/login");
-  if (user.role === "root" || user.role === "super_admin") redirect("/root");
+  if (isPlatformAdmin(user)) redirect("/root");
+  const { lang, t } = await getI18n();
+  const theme = await getTheme();
+  const role = `role_${user.role}` as DictKey;
 
-  let tenant = null;
-  let notifs: { id: string; title: string; body: string | null; created_at: Date }[] = [];
   if (user.role === "accountant") {
-    // Accountant sees linked tenants summary
-    const { accountant_links } = await import("@/db/schema");
-    const links = await db.select().from(accountant_links).where(eq(accountant_links.accountant_user_id, user.id));
-    const first = links[0];
-    if (first) {
-      const [t] = await db.select().from(tenants).where(eq(tenants.id, first.tenant_id)).limit(1);
-      tenant = t ?? null;
-    }
-  } else if (user.tenant_id) {
-    const [t] = await db.select().from(tenants).where(eq(tenants.id, user.tenant_id)).limit(1);
-    tenant = t ?? null;
-    notifs = await db.select().from(notifications).where(and(eq(notifications.tenant_id, user.tenant_id), eq(notifications.is_read, false))).orderBy(notifications.created_at).limit(5);
+    const nav: NavItem[] = [
+      { href: "/dashboard", label: "nav_clients", icon: "users", exact: true },
+      { href: "/dashboard/settings", label: "nav_settings", icon: "settings" },
+    ];
+    return (
+      <AppShell nav={nav} theme={theme} user={{ name: user.name, email: user.email, role }} context={{ title: user.name, subtitle: `${t("acc_yourId")}: ${user.accountant_id ?? "—"}`, icon: "🧾" }}>
+        {children}
+      </AppShell>
+    );
   }
 
-  const prof = tenant ? professionByKey(tenant.profession) : null;
-
+  if (!user.tenant_id) redirect("/login");
+  const [tenant] = await db.select().from(tenants).where(eq(tenants.id, user.tenant_id)).limit(1);
+  if (!tenant) redirect("/login");
+  const notifs = await db.select({ id: notifications.id, title: notifications.title, body: notifications.body, created_at: notifications.created_at })
+    .from(notifications).where(and(eq(notifications.tenant_id, tenant.id), eq(notifications.is_read, false))).orderBy(desc(notifications.created_at)).limit(8);
+  const prof = professionByKey(tenant.profession);
+  const can = (p: string) => hasPermission(user, p);
+  const nav: NavItem[] = [
+    { href: "/dashboard", label: "nav_dashboard", icon: "dashboard", exact: true },
+    ...(can("pos:use") ? [{ href: "/dashboard/pos", label: "nav_pos", icon: "pos" } as NavItem] : []),
+    ...(can("appointments:read") ? [{ href: "/dashboard/appointments", label: "nav_appointments", icon: "appointments" } as NavItem] : []),
+    ...(can("products:write") ? [{ href: "/dashboard/products", label: "nav_products", icon: "products" } as NavItem] : []),
+    ...(can("invoices:read") ? [{ href: "/dashboard/invoices", label: "nav_invoices", icon: "invoices" } as NavItem] : []),
+    ...(can("reports:read") ? [{ href: "/dashboard/reports", label: "nav_reports", icon: "reports" } as NavItem, { href: "/dashboard/ai", label: "nav_ai", icon: "ai" } as NavItem] : []),
+    ...(user.role === "tenant_owner" ? [{ href: "/dashboard/accountant", label: "nav_accountant", icon: "accountant" } as NavItem] : []),
+    { href: "/dashboard/settings", label: "nav_settings", icon: "settings" },
+  ];
   return (
-    <div className="mx-auto flex min-h-screen max-w-[1400px] flex-col lg:flex-row">
-      <aside className="w-full shrink-0 border-b border-slate-200 bg-white p-4 lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:border-b-0 lg:border-e dark:border-slate-800 dark:bg-slate-900">
-        <Link href="/" className="flex items-center gap-2 font-extrabold text-lg"><span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 text-white">A</span> Arena</Link>
-        {tenant && prof && (
-          <div className="mt-4 rounded-2xl bg-slate-100 p-3 dark:bg-slate-800">
-            <p className="text-2xl">{prof.icon}</p>
-            <p className="mt-1 font-bold leading-tight">{tenant.name}</p>
-            <p className="text-xs text-slate-500">{prof.nameDe} · {tenant.plan} · {tenant.status}</p>
-            <p className="mt-1 text-xs text-slate-400">Buchungslink: /book/{tenant.slug}</p>
-          </div>
-        )}
-        {user.role === "accountant" && (
-          <div className="mt-4 rounded-2xl bg-teal-50 p-3 text-sm dark:bg-teal-950">
-            <p className="font-bold">🧾 Steuerberater</p>
-            <p className="text-xs text-slate-500">Accountant ID: {user.accountant_id} — nur eigene Mandanten sichtbar</p>
-          </div>
-        )}
-        <nav className="mt-4 flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
-          {NAV.map((n) => (
-            <Link key={n.key} href={n.href} className="whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800">{n.label}</Link>
-          ))}
-        </nav>
-        <div className="mt-4 hidden lg:block">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Benachrichtigungen</p>
-          {notifs.length === 0 ? <p className="text-xs text-slate-400">Keine neuen.</p> : notifs.map((n) => (
-            <div key={n.id} className="mb-2 rounded-xl bg-blue-50 p-2 text-xs dark:bg-blue-950"><p className="font-semibold">{n.title}</p><p className="text-slate-500">{n.body}</p></div>
-          ))}
-        </div>
-      </aside>
-      <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/90">
-          <div className="min-w-0">
-            <p className="truncate font-bold">{user.name}</p>
-            <p className="text-xs text-slate-500">{user.role}{user.accountant_id ? ` · ${user.accountant_id}` : ""} · {user.email}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <LanguageSwitcher />
-            <Link href="/" className="rounded-xl border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700">Website</Link>
-            <LogoutButton />
-          </div>
-        </header>
-        <main className="p-4 md:p-6">{children}</main>
-      </div>
-    </div>
+    <AppShell
+      nav={nav} theme={theme} user={{ name: user.name, email: user.email, role }}
+      context={{ title: tenant.name, subtitle: `${professionName(prof, lang)} · ${tenant.plan}`, icon: prof.icon, link: { href: `/book/${tenant.slug}`, label: t("bookingLink") } }}
+      notifications={notifs.map((n) => ({ ...n, created_at: n.created_at.toISOString() }))}
+      banner={tenant.status === "suspended" || tenant.status === "cancelled" ? "suspended" : null}
+    >
+      {children}
+    </AppShell>
   );
 }

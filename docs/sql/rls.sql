@@ -1,6 +1,11 @@
 -- ============================================================
 -- PostgreSQL Row Level Security (RLS) — Second layer of tenant isolation
--- Apply after `npx drizzle-kit push`:
+-- ⚠️ OPTIONAL / NOT APPLIED AUTOMATICALLY.
+-- The application enforces tenant isolation in every query. Applying this file as-is
+-- would block ALL rows, because the app does not yet set `app.tenant_id` per request.
+-- Only apply it after (1) using a separate non-owner DB role for the app and
+-- (2) wrapping tenant requests in a transaction with: SELECT set_config('app.tenant_id', <tenant>, true)
+-- Apply manually:
 --   psql $DATABASE_URL -f docs/sql/rls.sql
 -- App sets per-connection: SET app.tenant_id = '<uuid>' (or 'root' for platform admin)
 -- Every tenant-owned table: tenant_id NOT NULL + policy tenant_id = current_setting

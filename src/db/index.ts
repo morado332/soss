@@ -15,6 +15,8 @@ export const pool =
   globalForDb.__arenaNextJsPostgresqlPool ??
   new Pool({
     connectionString: databaseUrl,
+    max: process.env.VERCEL ? 3 : 10, // serverless: keep few connections per instance
+    idleTimeoutMillis: 10_000,
   });
 
 if (process.env.NODE_ENV !== "production") {

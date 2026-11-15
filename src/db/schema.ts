@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, integer, boolean, timestamp, jsonb, pgEnum, uniqueIndex, index, primaryKey } from "drizzle-orm/pg-core";
 
 // ============================================================
 // Multi-Tenant SaaS Schema — Every tenant-owned table has tenant_id (NOT NULL)
@@ -44,14 +44,17 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   role: userRoleEnum("role").notNull(),
   tenant_id: uuid("tenant_id").references(() => tenants.id),
-  accountant_id: text("accountant_id"), // e.g. ACC-1001 for accountants
+  accountant_id: text("accountant_id").unique(), // e.g. ACC-1001 for accountants
   permissions: jsonb("permissions").default([]), // RBAC granular permissions
   is_active: boolean("is_active").default(true).notNull(),
   two_factor_enabled: boolean("two_factor_enabled").default(false).notNull(),
   impersonated_by: uuid("impersonated_by"),
+  failed_login_count: integer("failed_login_count").default(0).notNull(),
+  locked_until: timestamp("locked_until", { withTimezone: true }),
+  password_changed_at: timestamp("password_changed_at", { withTimezone: true }),
   last_login_at: timestamp("last_login_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_users_tenant").on(t.tenant_id)]);
 
 export const sessions = pgTable("sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -61,7 +64,7 @@ export const sessions = pgTable("sessions", {
   ip: text("ip"),
   user_agent: text("user_agent"),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_sessions_user").on(t.user_id)]);
 
 export const features = pgTable("features", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -115,7 +118,7 @@ export const products = pgTable("products", {
   variants: jsonb("variants").default([]), // [{size, color, stock, barcode}]
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_products_tenant").on(t.tenant_id)]);
 
 export const services = pgTable("services", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -142,7 +145,7 @@ export const appointments = pgTable("appointments", {
   notes: text("notes"),
   source: text("source").default("dashboard"), // dashboard | public_link | pos
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_appointments_tenant_time").on(t.tenant_id, t.starts_at)]);
 
 export const invoices = pgTable("invoices", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -161,6 +164,20 @@ export const invoices = pgTable("invoices", {
   xrechnung_xml: text("xrechnung_xml"),
   issued_at: timestamp("issued_at", { withTimezone: true }).defaultNow().notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [uniqueIndex("uq_invoices_tenant_number").on(t.tenant_id, t.number)]);
+
+// Gap-free, race-safe invoice numbering per tenant and year (GoBD)
+export const invoice_counters = pgTable("invoice_counters", {
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  year: integer("year").notNull(),
+  last_number: integer("last_number").default(0).notNull(),
+}, (t) => [primaryKey({ columns: [t.tenant_id, t.year] })]);
+
+// Platform-wide key/value settings (setup state, demo flag, ...)
+export const platform_settings = pgTable("platform_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value"),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const invoice_items = pgTable("invoice_items", {
@@ -187,7 +204,7 @@ export const transactions = pgTable("transactions", {
   commission_snapshot: jsonb("commission_snapshot").default({}), // frozen rates at time of sale
   stripe_payment_intent: text("stripe_payment_intent"),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_transactions_tenant_created").on(t.tenant_id, t.created_at)]);
 
 export const audit_logs = pgTable("audit_logs", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -200,7 +217,7 @@ export const audit_logs = pgTable("audit_logs", {
   new_value: jsonb("new_value"),
   ip: text("ip"),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [index("idx_audit_created").on(t.created_at)]);
 
 export const accountant_links = pgTable("accountant_links", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -208,7 +225,7 @@ export const accountant_links = pgTable("accountant_links", {
   tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
   status: text("status").default("active").notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [uniqueIndex("uq_accountant_tenant").on(t.accountant_user_id, t.tenant_id)]);
 
 export const notifications = pgTable("notifications", {
   id: uuid("id").defaultRandom().primaryKey(),

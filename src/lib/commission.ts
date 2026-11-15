@@ -36,7 +36,7 @@ export function resolveCommission(opts: {
   return { ...p, source: "platform" as const };
 }
 
-export const eur = (cents: number) => (cents / 100).toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+export const eur = (cents: number, loc = "de-DE") => (cents / 100).toLocaleString(loc, { style: "currency", currency: "EUR" });
 export const bpToPercent = (bp: number) => `${(bp / 100).toFixed(2)}%`;
 
 // Platform monthly fee invoice: commission total + 19% VAT on commission itself

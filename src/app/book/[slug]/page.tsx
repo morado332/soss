@@ -1,51 +1,60 @@
-"use client";
-import { use, useEffect, useState } from "react";
+import type { Metadata } from "next";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { CalendarX } from "lucide-react";
+import { db } from "@/db";
+import { tenants, services } from "@/db/schema";
+import { getI18n, getTheme } from "@/lib/i18n-server";
+import { professionByKey, professionName } from "@/lib/professions";
+import { LanguageSwitcher, ThemeToggle } from "@/components/providers";
+import { Logo } from "@/components/ui";
+import BookingForm from "./booking-form";
 
-type Svc = { id: string; name: string; duration_minutes: number; price_cents: number };
+export const dynamic = "force-dynamic";
 
-export default function PublicBookingPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = use(params);
-  const [business, setBusiness] = useState("");
-  const [svcs, setSvcs] = useState<Svc[]>([]);
-  const [form, setForm] = useState({ customer_name: "", customer_email: "", starts_at: "", service_id: "" });
-  const [msg, setMsg] = useState("");
-  const [done, setDone] = useState(false);
+async function load(slug: string) {
+  if (!/^[a-z0-9-]{1,100}$/.test(slug)) return null;
+  const [t] = await db.select({ id: tenants.id, name: tenants.name, profession: tenants.profession }).from(tenants)
+    .where(and(eq(tenants.slug, slug), inArray(tenants.status, ["active", "trial", "past_due"]))).limit(1);
+  if (!t) return null;
+  const svcs = await db.select({ id: services.id, name: services.name, duration_minutes: services.duration_minutes, price_cents: services.price_cents })
+    .from(services).where(and(eq(services.tenant_id, t.id), eq(services.is_active, true))).orderBy(asc(services.name));
+  return { ...t, services: svcs };
+}
 
-  useEffect(() => {
-    fetch(`/api/public/info?slug=${slug}`).then((r) => r.json()).then((d) => { setBusiness(d.business ?? ""); setSvcs(d.services ?? []); }).catch(() => {});
-  }, [slug]);
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const data = await load((await params).slug);
+  return { title: data ? data.name : "Booking", robots: { index: !!data } };
+}
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault(); setMsg("");
-    const res = await fetch("/api/public/book", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, customer_name: form.customer_name, customer_email: form.customer_email || undefined, starts_at: new Date(form.starts_at).toISOString(), service_id: form.service_id || undefined }) });
-    const d = await res.json().catch(() => ({}));
-    if (res.ok) { setDone(true); setMsg(`✓ Vielen Dank, ${form.customer_name}! Ihr Termin bei ${d.business} ist gebucht. Sie erhalten eine Erinnerung 24h und 1h vorher.`); }
-    else setMsg("❌ " + (d.error || "Fehler"));
-  }
-
+export default async function PublicBookingPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const data = await load(slug);
+  const { t, lang } = await getI18n();
+  const theme = await getTheme();
+  const prof = data ? professionByKey(data.profession) : null;
   return (
-    <main className="mx-auto max-w-xl px-4 py-10">
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Öffentliche Buchung · Endkunde</p>
-        <h1 className="mt-2 text-2xl font-extrabold">{business || "Termin buchen"}</h1>
-        <p className="mt-1 text-sm text-slate-500">Kein Login nötig. Wählen Sie Service & Zeitpunkt — der Inhaber erhält sofort eine Benachrichtigung.</p>
-        {done ? (
-          <div className="mt-6 rounded-2xl bg-emerald-50 p-5 text-center dark:bg-emerald-950"><p className="text-4xl">✅</p><p className="mt-2 font-bold">{msg}</p><p className="mt-2 text-sm text-slate-500">Sie können dieses Fenster schließen.</p></div>
-        ) : (
-          <form onSubmit={submit} className="mt-6 space-y-3">
-            <input required value={form.customer_name} onChange={(e) => setForm({ ...form, customer_name: e.target.value })} placeholder="Ihr Name *" className="w-full rounded-xl border border-slate-300 px-3 py-3 dark:border-slate-700 dark:bg-slate-950" />
-            <input value={form.customer_email} onChange={(e) => setForm({ ...form, customer_email: e.target.value })} placeholder="E-Mail (für Erinnerung)" className="w-full rounded-xl border border-slate-300 px-3 py-3 dark:border-slate-700 dark:bg-slate-950" />
-            <select value={form.service_id} onChange={(e) => setForm({ ...form, service_id: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-3 dark:border-slate-700 dark:bg-slate-950">
-              <option value="">Service wählen (optional)</option>
-              {svcs.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.duration_minutes} Min · {(s.price_cents / 100).toFixed(2)}€</option>)}
-            </select>
-            <input required type="datetime-local" value={form.starts_at} onChange={(e) => setForm({ ...form, starts_at: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-3 dark:border-slate-700 dark:bg-slate-950" />
-            {msg && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{msg}</p>}
-            <button className="w-full rounded-2xl bg-blue-600 py-4 font-bold text-white">Termin verbindlich buchen →</button>
-            <p className="text-center text-xs text-slate-400">DSGVO: Ihre Daten werden nur für diesen Termin verwendet.</p>
-          </form>
-        )}
-      </div>
-    </main>
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-slate-50 dark:from-slate-900 dark:to-slate-950">
+      <div className="mx-auto flex max-w-xl items-center justify-end gap-2 px-4 pt-6"><LanguageSwitcher /><ThemeToggle initial={theme} /></div>
+      <main className="mx-auto max-w-xl px-4 py-8">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900">
+          {!data || !prof ? (
+            <div className="p-10 text-center"><CalendarX className="mx-auto h-10 w-10 text-slate-300" /><p className="mt-4 text-sm text-slate-500">{t("b_notFound")}</p></div>
+          ) : (
+            <>
+              <div className="border-b border-slate-100 bg-slate-50/60 px-6 py-6 dark:border-slate-800 dark:bg-slate-800/30">
+                <p className="text-xs font-medium uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{t("b_badge")}</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-white text-2xl shadow-sm dark:bg-slate-900">{prof.icon}</span>
+                  <div><h1 className="text-xl font-semibold tracking-tight">{data.name}</h1><p className="text-sm text-slate-500">{professionName(prof, lang)}</p></div>
+                </div>
+                <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">{t("b_sub")}</p>
+              </div>
+              <BookingForm slug={slug} business={data.name} services={data.services} />
+            </>
+          )}
+        </div>
+        <p className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-400"><Logo className="scale-75" />{t("poweredBy")}</p>
+      </main>
+    </div>
   );
 }

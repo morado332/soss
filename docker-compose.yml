@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: arena
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me-db-password}
+      POSTGRES_DB: arena
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arena"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://arena:${DB_PASSWORD:-change-me-db-password}@db:5432/arena
+      NEXT_PUBLIC_APP_URL: ${APP_URL:-http://localhost:3000}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+    ports: ["3000:3000"]
+volumes:
+  pgdata:

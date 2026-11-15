@@ -1,52 +1,115 @@
-# Arena — Multi-Tenant SaaS für 14 Branchen (Deutschland)
+# Arena — Multi-Tenant SaaS (POS · Termine · Rechnungen)
 
-Eine Plattform für Fahrschule, Friseur, Kiosk/Supermarkt, Designagentur, Steuerbüro, Bekleidung, Praxis, Apotheke, Künstler, Restaurant, Beauty, Buchhandlung, Schule & Bäckerei.
+Next.js 16 · TypeScript · PostgreSQL · Drizzle ORM · Tailwind 4 · DE / EN / العربية (RTL) · Light/Dark
 
-**Stack:** Next.js (App Router) + TypeScript · PostgreSQL + Drizzle ORM · Stripe Connect · Fiskaly TSE · DATEV/XRechnung · Claude KI · DE/EN/AR (RTL)
+---
 
-## Schnellstart (lokal / Sandbox)
+## 🇸🇦 التشغيل السريع (عربي)
 
+**المتطلبات:** Node.js 20+ و PostgreSQL 14+ (أو Docker).
+
+### الطريقة 1 — Docker (الأسهل)
+```bash
+docker compose up --build
+```
+ثم افتح `http://localhost:3000` → سيتم تحويلك تلقائياً إلى **`/setup`**.
+
+### الطريقة 2 — بدون Docker
 ```bash
 npm install
-cp .env.example .env   # DATABASE_URL anpassen
-npx drizzle-kit push   # Schema anlegen
-npm run build && npm run start
+cp .env.example .env        # عدّل DATABASE_URL
+npm run build
+npm start
 ```
+- الجداول تُنشأ **تلقائياً** عند تشغيل الخادم (لا حاجة لـ `drizzle-kit push`).
 
-Demo-Zugänge (werden beim ersten Login automatisch angelegt):
+### إنشاء حساب الـ Root لأول مرة
+1. عند أول تشغيل يطبع الخادم في الطرفية **رمز إعداد لمرة واحدة** (Setup Token):
+   ```
+   ARENA FIRST-RUN SETUP ... enter this one-time setup token:  vqSgzW71Ik0R
+   ```
+   (أو ضع قيمة ثابتة في `SETUP_TOKEN` داخل `.env`).
+2. افتح `/setup`، أدخل الرمز والاسم والبريد وكلمة مرور قوية (10 أحرف+، حروف كبيرة وصغيرة ورقم).
+3. اختيارياً فعّل **«بيانات تجريبية»** لإنشاء 14 محلاً تجريبياً للاختبار.
+4. بعد إنشاء الـ Root تُغلق صفحة الإعداد نهائياً ولا يمكن إنشاء Root آخر منها.
 
-| Rolle | E-Mail | Passwort |
+### حسابات تجريبية (فقط إذا فعّلت البيانات التجريبية) — كلمة المرور: `Demo12345!`
+| الدور | البريد |
+|---|---|
+| مالك صالون | `owner@friseur.de` |
+| مالك كشك | `owner@kiosk.de` |
+| مالك عيادة (قائمة انتظار) | `owner@praxis.de` |
+| موظف كاشير (صلاحيات محدودة) | `staff@friseur.de` |
+| محاسب `ACC-1001` | `accountant@kanzlei.de` |
+| كل المجالات | `owner@<slug>.de` (مثال `owner@restaurant.de`) |
+
+> ⚠️ لا تفعّل البيانات التجريبية على خادم الإنتاج — كلمة مرورها معروفة.
+
+---
+
+## ☁️ تشغيل مجاني يعمل من أي مكان (Vercel + Neon) — بدون شراء استضافة
+
+كل الخطوات تتم من متصفح التابلت. الخطة المجانية كافية للتجربة.
+
+1. **قاعدة البيانات (Neon):** ادخل إلى neon.tech ← سجّل بحساب GitHub ← أنشئ مشروعاً (المنطقة: Frankfurt) ← انسخ «Connection string».
+2. **الموقع (Vercel):** ادخل إلى vercel.com ← سجّل بحساب GitHub ← **Add New → Project** ← اختر مستودع المشروع ← **Import**.
+3. في **Environment Variables** أضف:
+   | الاسم | القيمة |
+   |---|---|
+   | `DATABASE_URL` | رابط Neon (ينتهي بـ `?sslmode=require`) |
+   | `SETUP_TOKEN` | كلمة سرية طويلة من اختيارك (تُستخدم مرة واحدة في `/setup`) |
+4. اضغط **Deploy**. بعد دقيقتين ستحصل على رابط مثل `https://arena-xxxx.vercel.app`.
+5. افتح الرابط ← `/setup` ← أدخل `SETUP_TOKEN` وأنشئ حساب الـ Root.
+
+### تثبيته كتطبيق على التابلت (MatePad / Android / iPad)
+- **Chrome أو Edge:** افتح الرابط ← القائمة ⋮ ← **تثبيت التطبيق / إضافة إلى الشاشة الرئيسية**.
+- **متصفح Huawei:** القائمة ← **إضافة إلى الشاشة الرئيسية**.
+- **iPad (Safari):** زر المشاركة ← **إضافة إلى الشاشة الرئيسية**.
+
+يفتح بعدها بأيقونة Arena في وضع ملء الشاشة مثل أي تطبيق، ويعرض صفحة «لا يوجد اتصال» عند انقطاع الإنترنت.
+الجداول تُنشأ تلقائياً عند أول تشغيل. أي تعديل يُرفع إلى GitHub يُنشر تلقائياً.
+
+> ملاحظة: في الخطة المجانية الحد من محاولات الدخول يُحفظ في ذاكرة كل نسخة من الخادم. للإنتاج الحقيقي يُنقل إلى Redis.
+
+---
+
+## 🇩🇪 Schnellstart
+
+```bash
+docker compose up --build          # oder: npm install && npm run build && npm start
+```
+1. Server startet → Migrationen laufen automatisch → **Setup-Token** erscheint im Log.
+2. `/setup` öffnen → Root-Konto anlegen (optional mit Demo-Daten).
+3. Unter `/root/tenants` Geschäfte anlegen, unter `/root/accountants` Steuerberater.
+
+## Rollen
+| Rolle | Bereich | Rechte |
 |---|---|---|
-| Root | `root@platform.de` | `Root123!` |
-| Fahrschule Inhaber | `owner@fahrschule.de` | `Owner123!` |
-| Friseur Inhaber | `owner@friseur.de` | `Owner123!` |
-| Kiosk Inhaber | `owner@kiosk.de` | `Owner123!` |
-| Steuerberater (ACC-1001) | `accountant@kanzlei.de` | `Account123!` |
+| Root | `/root` | Geschäfte, Konditionen (Provision), Sperren, Steuerberater, Audit-Log |
+| Inhaber | `/dashboard` | Alles im eigenen Geschäft, Team, Steuerberater verknüpfen |
+| Mitarbeiter | `/dashboard` | Nur Rechte der Rolle: Kasse / Empfang / Filialleitung |
+| Steuerberater | `/dashboard` | Nur verknüpfte Mandanten, Exporte (Lesezugriff) |
+| Endkunde | `/book/<slug>` | Öffentliche Buchung ohne Login |
 
-Öffentlicher Buchungslink (Beispiel): `/book/friseur`
+## Sicherheit (umgesetzt)
+- **Kein Standard-Root-Passwort mehr** – Root wird einmalig über `/setup` mit Setup-Token angelegt (Advisory-Lock gegen Race Conditions).
+- bcrypt (12 Runden), starke Passwort-Richtlinie, Konstantzeit-Login (keine Konto-Enumeration).
+- **Brute-Force-Schutz:** Rate-Limit pro IP & E-Mail, Kontosperre nach 5 Fehlversuchen (15 Min.).
+- Sessions: zufälliges 256-bit-Token, nur SHA-256-Hash in der DB, HttpOnly + SameSite, 12 h Laufzeit, Invalidierung bei Passwortänderung/Sperre.
+- **CSRF:** Origin-/Sec-Fetch-Prüfung für alle schreibenden API-Requests (`src/proxy.ts`).
+- **Security-Header:** Nonce-basierte CSP, X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, HSTS (bei https).
+- **Mandantentrennung** in jeder Abfrage + RBAC-Prüfung serverseitig in API **und** Seiten.
+- Tenants können ihre **Provision nicht mehr selbst ändern** (nur Root).
+- Gesperrte Geschäfte: keine Verkäufe/Rechnungen/Änderungen.
+- Kasse: Transaktion + atomarer Lagerabzug (kein Überverkauf), race-sichere, lückenlose Rechnungsnummern pro Jahr.
+- Storno: transaktional, doppelte Stornos unmöglich, Zahlungs-Split wird gegengebucht.
+- Strikte Eingabevalidierung (zod `.strict()`), Betragsgrenzen, Body-Size-Limit 256 KB.
+- **CSV-/XML-Injection** in Exporten verhindert, Datumsparameter validiert.
+- Öffentliche Buchung: Rate-Limit, Honeypot, keine Buchung in der Vergangenheit, Service muss zum Geschäft gehören, minimale Antwortdaten.
+- Keine Passwort-Hashes / IBAN in API-Antworten oder Audit-Logs.
 
-## Was funktioniert
-
-- **Root-Panel** (`/root`): Tenants erstellen/sperren, Provisionen, Statistiken, Audit-Log
-- **Tenant-Dashboard** (`/dashboard`): Umsatz, Provision, Netto, Termine, Lagerwarnungen, Branchen-Module
-- **POS** (`/dashboard/pos`): Barcode-Scan, Touch-Kasse, Bar (TSE) / Terminal / Online, Split-Anzeige
-- **Termine** (`/dashboard/appointments`): Konflikt-Schutz, Warteschlange (Praxis), öffentlicher Link
-- **Rechnungen** (`/dashboard/invoices`): GoBD, Storno, TSE, DATEV- & XRechnung-Export
-- **Steuerberater** (`/dashboard/accountant`): Mandanten (nur eigene), Monatsversand, DATEV
-- **KI-Berater** (`/dashboard/ai`): Bericht, Prognose, Saison-Tipps (Claude-ready)
-- **Berichte** (`/dashboard/reports`): Split pro Transaktion, Plattform-Monatsrechnung
-- **i18n:** Deutsch (Default) / English / العربية RTL + Dark/Light Mode
-
-## Deployment (netcup Root Server, Ubuntu 24.04 + CloudPanel)
-
-1. Node.js 20+ & PostgreSQL & Redis installieren (CloudPanel).
-2. `.env` aus `.env.example` befüllen (Stripe, Fiskaly, Claude, SMTP).
-3. `npx drizzle-kit push` + `psql $DATABASE_URL -f docs/sql/rls.sql`
-4. `npm run build && npm run start` (oder PM2/systemd), Reverse Proxy in CloudPanel auf Port 3000.
-5. Cron-Jobs aus `.env.example` eintragen (Erinnerungen, Monatsrechnungen, Backup).
-
-## Doku
-
-- Architektur, DB-Struktur, Ordnerstruktur, Phasenplan: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- RLS: [`docs/sql/rls.sql`](docs/sql/rls.sql)
-- Isolation-Tests: [`tests/tenant-isolation.test.md`](tests/tenant-isolation.test.md)
+## Hinweise / offene Integrationen
+- TSE (Fiskaly), Stripe Connect/Terminal, E-Mail/SMS und Claude-API sind **Integrationspunkte** (im Code markiert) und benötigen echte Zugangsdaten.
+- Rate-Limiter ist In-Memory → bei mehreren Server-Instanzen auf Redis umstellen.
+- `docs/sql/rls.sql` ist optional und nur zusammen mit einer per-Request gesetzten `app.tenant_id` nutzbar (siehe Datei).
+- Schema-Änderungen: `src/db/schema.ts` bearbeiten → `npm run db:generate` → Migration wird beim nächsten Start angewendet.

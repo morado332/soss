@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
+import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { tenants, transactions } from "@/db/schema";
-import { sql } from "drizzle-orm";
-import { requireUser } from "@/lib/auth";
+import { apiRoot } from "@/lib/guard";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  const user = await requireUser().catch(() => null);
-  if (!user || (user.role !== "root" && user.role !== "super_admin")) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  const all = await db.select().from(tenants);
-  const [rev] = await db.select({ v: sql<number>`coalesce(sum(amount_cents),0)::int` }).from(transactions);
-  const [comm] = await db.select({ v: sql<number>`coalesce(sum(commission_cents),0)::int` }).from(transactions);
-  return NextResponse.json({
-    tenants: all.length, revenue: rev.v, commissions: comm.v,
-    pastDue: all.filter((t) => t.status === "past_due").length, suspended: all.filter((t) => t.status === "suspended").length,
-  });
+  const user = await apiRoot();
+  if (user instanceof NextResponse) return user;
+  const [t] = await db.select({
+    total: sql<number>`count(*)::int`,
+    pastDue: sql<number>`count(*) filter (where status = 'past_due')::int`,
+    suspended: sql<number>`count(*) filter (where status = 'suspended')::int`,
+    mrr: sql<number>`coalesce(sum(monthly_fee_cents) filter (where status in ('active','past_due')),0)::int`,
+  }).from(tenants);
+  const [tx] = await db.select({ revenue: sql<number>`coalesce(sum(amount_cents),0)::bigint`, commissions: sql<number>`coalesce(sum(commission_cents),0)::bigint` }).from(transactions);
+  return NextResponse.json({ tenants: t.total, pastDue: t.pastDue, suspended: t.suspended, mrr: t.mrr, revenue: Number(tx.revenue), commissions: Number(tx.commissions) });
 }

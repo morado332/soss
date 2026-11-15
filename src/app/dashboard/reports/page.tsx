@@ -1,64 +1,77 @@
-import { redirect } from "next/navigation";
-import { currentUser } from "@/lib/auth";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { Banknote, Landmark, Percent, Wallet } from "lucide-react";
 import { db } from "@/db";
-import { transactions, tenants } from "@/db/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { transactions } from "@/db/schema";
+import { requireTenantPage } from "@/lib/page-guard";
 import { eur, platformFeeInvoice } from "@/lib/commission";
-import { Card, Stat, Empty, Badge } from "@/components/ui";
+import { getI18n } from "@/lib/i18n-server";
+import { monthStart, monthTotals, dailyRevenue } from "@/lib/stats";
+import { Card, Stat, Empty, Badge, PageHeader, Table, thCls, tdCls, cx } from "@/components/ui";
+import { RevenueBars } from "@/components/revenue-bars";
+import type { DictKey } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const user = await currentUser();
-  if (!user?.tenant_id) redirect("/login");
-  const tid = user.tenant_id;
-  const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tid)).limit(1);
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  const [rev] = await db.select({ v: sql<number>`coalesce(sum(amount_cents),0)::int` }).from(transactions).where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart)));
-  const [tax] = await db.select({ v: sql<number>`coalesce(sum(tax_cents),0)::int` }).from(transactions).where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart)));
-  const [comm] = await db.select({ v: sql<number>`coalesce(sum(commission_cents),0)::int` }).from(transactions).where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart)));
-  const [net] = await db.select({ v: sql<number>`coalesce(sum(net_cents),0)::int` }).from(transactions).where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart)));
-  const byMethod = await db.select({ method: transactions.method, v: sql<number>`coalesce(sum(amount_cents),0)::int`, c: sql<number>`count(*)::int` }).from(transactions).where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart))).groupBy(transactions.method);
-  const all = await db.select().from(transactions).where(eq(transactions.tenant_id, tid)).orderBy(transactions.created_at).limit(30);
-  const fee = platformFeeInvoice(comm.v);
-
+  const { tenant } = await requireTenantPage("reports:read");
+  const { t, locale } = await getI18n();
+  const money = (c: number) => eur(c, locale);
+  const tid = tenant.id;
+  const [totals, daily, byMethod, all] = await Promise.all([
+    monthTotals(tid), dailyRevenue(tid, 14),
+    db.select({ method: transactions.method, v: sql<number>`coalesce(sum(amount_cents),0)::int`, c: sql<number>`count(*)::int` }).from(transactions)
+      .where(and(eq(transactions.tenant_id, tid), gte(transactions.created_at, monthStart()))).groupBy(transactions.method),
+    db.select().from(transactions).where(eq(transactions.tenant_id, tid)).orderBy(desc(transactions.created_at)).limit(50),
+  ]);
+  const fee = platformFeeInvoice(totals.fee);
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-extrabold">📈 Berichte — Umsatz, Gewinn, Split</h1><p className="text-sm text-slate-500">Jede Transaktion zeigt: Brutto · MwSt. · Plattform-Provision · Netto an Sie. Snapshots bleiben korrekt, auch wenn sich Sätze später ändern.</p></div>
+      <PageHeader title={t("r_title")} description={t("r_sub")} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Brutto (Monat)" value={eur(rev.v)} />
-        <Stat label="MwSt. (7%/19%)" value={eur(tax.v)} />
-        <Stat label="Provision" value={eur(comm.v)} color="#dc2626" />
-        <Stat label="Netto an Sie" value={eur(net.v)} color="#059669" />
+        <Stat label={t("pos_gross")} value={money(totals.gross)} icon={Banknote} />
+        <Stat label={t("i_vat")} value={money(totals.tax)} icon={Landmark} tone="sky" />
+        <Stat label={t("d_commission")} value={money(totals.fee)} icon={Percent} tone="rose" />
+        <Stat label={t("d_net")} value={money(totals.net)} icon={Wallet} tone="emerald" />
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card title="💳 Nach Zahlungsart">
-          {byMethod.length === 0 ? <Empty text="Keine Daten." /> : byMethod.map((m) => (
-            <div key={m.method} className="flex justify-between border-b py-2.5 text-sm last:border-0 dark:border-slate-800"><span className="capitalize">{m.method} <span className="text-slate-400">({m.c}×)</span></span><b>{eur(m.v)}</b></div>
-          ))}
-          <p className="mt-3 text-xs text-slate-400">Bar = TSE-signiert, ohne Stripe. Karte/Terminal/Online = Stripe Connect Split auf Ihr Konto.</p>
-        </Card>
-        <Card title="🧾 Plattform-Monatsrechnung (Vorschau)">
-          <dl className="space-y-1 text-sm">
-            <div className="flex justify-between"><dt>Provisionen gesamt</dt><dd>{eur(fee.commission)}</dd></div>
-            <div className="flex justify-between"><dt>MwSt. 19% auf Provision</dt><dd>{eur(fee.vat)}</dd></div>
-            <div className="flex justify-between border-t pt-2 font-extrabold"><dt>Rechnungsbetrag</dt><dd>{eur(fee.total)}</dd></div>
-          </dl>
-          <p className="mt-3 text-xs text-slate-400">Wird am Monatsende automatisch erstellt & versendet. Abonnement: {eur(tenant?.monthly_fee_cents ?? 0)}/Monat ({tenant?.plan}).</p>
-        </Card>
-      </div>
-      <Card title="📋 Alle Transaktionen (30)">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs uppercase text-slate-500"><tr><th className="p-2 text-start">Datum</th><th className="p-2 text-start">Methode</th><th className="p-2 text-start">Brutto</th><th className="p-2 text-start">MwSt.</th><th className="p-2 text-start">Provision</th><th className="p-2 text-start">Netto</th><th className="p-2 text-start">Snapshot</th></tr></thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {all.map((t) => (
-                <tr key={t.id}><td className="p-2">{new Date(t.created_at).toLocaleDateString("de-DE")}</td><td className="p-2"><Badge>{t.method}</Badge></td><td className="p-2 font-bold">{eur(t.amount_cents)}</td><td className="p-2">{eur(t.tax_cents)}</td><td className="p-2">{eur(t.commission_cents)}</td><td className="p-2 font-semibold text-emerald-600">{eur(t.net_cents)}</td><td className="p-2 text-xs text-slate-400">{JSON.stringify(t.commission_snapshot)}</td></tr>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card title={t("r_last7")} className="xl:col-span-2"><RevenueBars data={daily} locale={locale} label={t("r_last7")} /></Card>
+        <Card title={t("r_byMethod")}>
+          {byMethod.length === 0 ? <Empty text={t("noData")} /> : (
+            <ul className="space-y-3">
+              {byMethod.map((m) => (
+                <li key={m.method} className="flex items-center justify-between text-sm">
+                  <span>{t(`m_${m.method}` as DictKey)} <span className="text-slate-400">({m.c}×)</span></span>
+                  <span className="tabular font-semibold">{money(m.v)}</span>
+                </li>
               ))}
-            </tbody>
-          </table>
-          {all.length === 0 && <Empty text="Noch keine Transaktionen." />}
-        </div>
+            </ul>
+          )}
+          <div className="mt-6 border-t border-slate-100 pt-4 dark:border-slate-800">
+            <p className="mb-3 text-sm font-semibold">{t("r_platformInvoice")}</p>
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between text-slate-500"><dt>{t("r_feesTotal")}</dt><dd className="tabular">{money(fee.commission)}</dd></div>
+              <div className="flex justify-between text-slate-500"><dt>{t("r_feeVat")}</dt><dd className="tabular">{money(fee.vat)}</dd></div>
+              <div className="flex justify-between font-semibold"><dt>{t("r_invoiceTotal")}</dt><dd className="tabular">{money(fee.total)}</dd></div>
+              <div className="flex justify-between pt-2 text-xs text-slate-500"><dt>{t("r_subscription")} ({tenant.plan})</dt><dd className="tabular">{money(tenant.monthly_fee_cents)}{t("perMonth")}</dd></div>
+            </dl>
+          </div>
+        </Card>
+      </div>
+      <Card title={t("r_all")} padded={false}>
+        {all.length === 0 ? <div className="p-5"><Empty text={t("noData")} /></div> : (
+          <Table head={<><th className={thCls}>{t("date")}</th><th className={thCls}>{t("r_method")}</th><th className={cx(thCls, "text-end")}>{t("pos_gross")}</th><th className={cx(thCls, "text-end")}>{t("i_vat")}</th><th className={cx(thCls, "text-end")}>{t("d_commission")}</th><th className={cx(thCls, "text-end")}>{t("d_net")}</th></>}>
+            {all.map((x) => (
+              <tr key={x.id} className={x.amount_cents < 0 ? "text-red-600 dark:text-red-400" : ""}>
+                <td className={cx(tdCls, "tabular")}>{new Date(x.created_at).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })}</td>
+                <td className={tdCls}><Badge>{t(`m_${x.method}` as DictKey)}</Badge></td>
+                <td className={cx(tdCls, "tabular text-end font-medium")}>{money(x.amount_cents)}</td>
+                <td className={cx(tdCls, "tabular text-end")}>{money(x.tax_cents)}</td>
+                <td className={cx(tdCls, "tabular text-end")}>{money(x.commission_cents)}</td>
+                <td className={cx(tdCls, "tabular text-end font-medium")}>{money(x.net_cents)}</td>
+              </tr>
+            ))}
+          </Table>
+        )}
       </Card>
     </div>
   );

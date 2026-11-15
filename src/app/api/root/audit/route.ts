@@ -1,10 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { audit_logs } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { audit_logs, users, tenants } from "@/db/schema";
+import { apiRoot } from "@/lib/guard";
 export const dynamic = "force-dynamic";
-export async function GET() {
-  const user = await requireUser().catch(() => null);
-  if (!user || (user.role !== "root" && user.role !== "super_admin")) return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-  return NextResponse.json(await db.select().from(audit_logs).orderBy(audit_logs.created_at).limit(20));
+export async function GET(req: NextRequest) {
+  const user = await apiRoot();
+  if (user instanceof NextResponse) return user;
+  const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit")) || 50, 1), 200);
+  const rows = await db.select({
+    id: audit_logs.id, action: audit_logs.action, entity: audit_logs.entity, entity_id: audit_logs.entity_id, ip: audit_logs.ip, created_at: audit_logs.created_at,
+    actor: users.email, tenant: tenants.name,
+  }).from(audit_logs).leftJoin(users, eq(audit_logs.actor_id, users.id)).leftJoin(tenants, eq(audit_logs.tenant_id, tenants.id))
+    .orderBy(desc(audit_logs.created_at)).limit(limit);
+  return NextResponse.json(rows);
 }
