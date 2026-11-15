@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { currentUser, isPlatformAdmin } from "@/lib/auth";
+import { isHealthy } from "@/lib/diagnostics";
 import { rootExists, demoSeeded } from "@/lib/setup";
 import { getI18n, getTheme } from "@/lib/i18n-server";
 import { AuthLayout } from "@/components/auth-layout";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Login" };
 
 export default async function LoginPage() {
+  if (!(await isHealthy())) redirect("/status");
   if (!(await rootExists())) redirect("/setup");
   const user = await currentUser();
   if (user) redirect(isPlatformAdmin(user) ? "/root" : "/dashboard");

@@ -5,13 +5,18 @@ const globalForDb = globalThis as typeof globalThis & {
   __arenaNextJsPostgresqlPool?: Pool;
 };
 
+/** DATABASE_URL, or POSTGRES_URL as set by some Vercel storage integrations. */
+export function databaseUrlFromEnv(): string | undefined {
+  return process.env.DATABASE_URL || process.env.POSTGRES_URL || undefined;
+}
+
 /**
  * The pool is created lazily on first use, so `next build` works without DATABASE_URL
  * (e.g. on Vercel before a database is attached). At runtime a missing URL still fails loudly.
  */
 function getPool(): Pool {
   if (globalForDb.__arenaNextJsPostgresqlPool) return globalForDb.__arenaNextJsPostgresqlPool;
-  const databaseUrl = process.env.DATABASE_URL;
+  const databaseUrl = databaseUrlFromEnv();
   if (!databaseUrl) throw new Error("DATABASE_URL is required");
   const created = new Pool({
     connectionString: databaseUrl,

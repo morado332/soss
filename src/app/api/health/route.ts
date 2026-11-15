@@ -1,13 +1,9 @@
-import { db } from "@/db";
-import { sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { checkHealth } from "@/lib/diagnostics";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  try {
-    await db.execute(sql`select 1`);
-    return Response.json({ ok: true });
-  } catch {
-    return Response.json({ ok: false }, { status: 500 });
-  }
+  const h = await checkHealth();
+  return NextResponse.json({ ok: h.code === "OK", code: h.code, detail: h.detail ?? null }, { status: h.code === "OK" ? 200 : 503 });
 }
