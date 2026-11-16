@@ -13,7 +13,7 @@ import { PrintButton } from "./print-button";
 export const dynamic = "force-dynamic";
 
 export default async function InvoiceView({ params }: { params: Promise<{ id: string }> }) {
-  const { tenant } = await requireTenantPage("invoices:read");
+  const { tenant } = await requireTenantPage("invoices:read", false, "invoices");
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [inv] = await db.select().from(invoices).where(and(eq(invoices.id, id), eq(invoices.tenant_id, tenant.id))).limit(1);

@@ -33,7 +33,7 @@ const Body = z.object({
 }).strict();
 
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("appointments:write", { write: true });
+  const ctx = await apiTenant("appointments:write", { write: true, module: "appointments" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 const Patch = z.object({ id: z.string().uuid(), status: z.enum(["scheduled", "confirmed", "completed", "cancelled", "no_show"]) }).strict();
 
 export async function PATCH(req: NextRequest) {
-  const ctx = await apiTenant("appointments:write", { write: true });
+  const ctx = await apiTenant("appointments:write", { write: true, module: "appointments" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Patch.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);

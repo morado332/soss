@@ -21,8 +21,9 @@ import { useEffect, type DependencyList } from "react";
 export function useLoader(fn: () => unknown, deps: DependencyList) {
   useEffect(() => {
     let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) void fn(); });
-    return () => { cancelled = true; };
+    let cleanup: unknown;
+    queueMicrotask(() => { if (!cancelled) cleanup = fn(); });
+    return () => { cancelled = true; if (typeof cleanup === "function") (cleanup as () => void)(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 }

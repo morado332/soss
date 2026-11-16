@@ -144,6 +144,8 @@ export const appointments = pgTable("appointments", {
   status: appointmentStatusEnum("status").default("scheduled").notNull(),
   notes: text("notes"),
   source: text("source").default("dashboard"), // dashboard | public_link | pos
+  reminded_24h_at: timestamp("reminded_24h_at", { withTimezone: true }),
+  reminded_1h_at: timestamp("reminded_1h_at", { withTimezone: true }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [index("idx_appointments_tenant_time").on(t.tenant_id, t.starts_at)]);
 
@@ -322,3 +324,6 @@ export const school_classes = pgTable("school_classes", {
   homework: jsonb("homework").default([]),
   announcements: jsonb("announcements").default([]),
 });
+
+// Profession modules keep their tables next to their code; re-exported here for convenience.
+export * from "../modules/fahrschule/schema";

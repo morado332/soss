@@ -3,6 +3,6 @@ import { hasPermission } from "@/lib/auth";
 import InvoicesClient from "./invoices-client";
 export const dynamic = "force-dynamic";
 export default async function Page() {
-  const { user, tenant } = await requireTenantPage("invoices:read");
+  const { user, tenant } = await requireTenantPage("invoices:read", false, "invoices");
   return <InvoicesClient canWrite={hasPermission(user, "invoices:write")} defaultTax={tenant.tax_rate_bp ?? 1900} />;
 }

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 // AI advisor — deterministic insights computed from the tenant's own data only.
 // Integration point for Claude (ANTHROPIC_API_KEY): send these aggregates, never raw customer data.
 export default async function AiPage() {
-  const { tenant } = await requireTenantPage("reports:read");
+  const { tenant } = await requireTenantPage("reports:read", false, "ai");
   const { t, locale } = await getI18n();
   const money = (c: number) => eur(c, locale);
   const tid = tenant.id;

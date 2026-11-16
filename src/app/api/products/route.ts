@@ -33,7 +33,7 @@ const CreateBody = z.object(Fields).strict();
 const PatchBody = z.object({ id: z.string().uuid(), is_active: z.boolean().optional(), ...Object.fromEntries(Object.entries(Fields).map(([k, v]) => [k, v.optional()])) }).strict();
 
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("products:write", { write: true });
+  const ctx = await apiTenant("products:write", { write: true, module: "products" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = CreateBody.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const ctx = await apiTenant("products:write", { write: true });
+  const ctx = await apiTenant("products:write", { write: true, module: "products" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = PatchBody.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);

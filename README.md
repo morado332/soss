@@ -82,6 +82,19 @@ docker compose up --build          # oder: npm install && npm run build && npm s
 2. `/setup` öffnen → Root-Konto anlegen (optional mit Demo-Daten).
 3. Unter `/root/tenants` Geschäfte anlegen, unter `/root/accountants` Steuerberater.
 
+## Module je Branche
+Jedes Geschäft sieht nur die Bereiche seiner Branche (`src/modules/registry.ts`). Beispiel Fahrschule: Fahrstunden, Fahrschüler,
+Fahrlehrer, Fahrzeuge, Theorie, Termine, Erinnerungen, Rechnungen, Steuerberater, KI-Berater — keine Kasse, keine Produkte.
+Der Root kann einzelne Bereiche pro Geschäft abschalten (Root → Geschäfte → Konditionen). Gesperrte Bereiche sind auch
+serverseitig blockiert (Seiten leiten um, API antwortet `MODULE_DISABLED`).
+
+Neue Branche hinzufügen: Eintrag in `PROFESSION_MODULES`, Tabellen in `src/modules/<key>/schema.ts`, Seiten unter
+`src/app/dashboard/m/<key>/`, API unter `src/app/api/m/<key>/`.
+
+## Erinnerungen (Cron)
+`/api/cron/reminders` alle 15 Minuten mit `Authorization: Bearer $CRON_SECRET` aufrufen (crontab auf dem Server).
+E-Mail-Versand über Resend (`RESEND_API_KEY`, `EMAIL_FROM`); ohne Schlüssel nur In-App-Benachrichtigungen.
+
 ## Rollen
 | Rolle | Bereich | Rechte |
 |---|---|---|

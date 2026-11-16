@@ -9,7 +9,7 @@ import { readJson } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const ctx = await apiTenant("appointments:read");
+  const ctx = await apiTenant("appointments:read", { module: "queue" });
   if (ctx instanceof NextResponse) return ctx;
   const since = new Date(); since.setHours(0, 0, 0, 0);
   return NextResponse.json(await db.select().from(queue_tickets).where(and(eq(queue_tickets.tenant_id, ctx.tenant.id), sql`(${queue_tickets.status} <> 'done' or ${gte(queue_tickets.created_at, since)})`)).orderBy(asc(queue_tickets.number)).limit(100));
@@ -19,7 +19,7 @@ const Body = z.object({ action: z.enum(["new", "next", "done"]), patient_name: z
 
 // Practice ticket queue: draw a number / call next / finish current
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("appointments:write", { write: true });
+  const ctx = await apiTenant("appointments:write", { write: true, module: "queue" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);

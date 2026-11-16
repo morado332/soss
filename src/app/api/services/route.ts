@@ -18,7 +18,7 @@ export async function GET() {
 const Body = z.object({ name: z.string().trim().min(1).max(200), duration_minutes: z.number().int().min(5).max(480), price_cents: centsSchema }).strict();
 
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("appointments:write", { write: true });
+  const ctx = await apiTenant("appointments:write", { write: true, module: "appointments" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const ctx = await apiTenant("appointments:write", { write: true });
+  const ctx = await apiTenant("appointments:write", { write: true, module: "appointments" });
   if (ctx instanceof NextResponse) return ctx;
   const id = z.string().uuid().safeParse(req.nextUrl.searchParams.get("id"));
   if (!id.success) return jsonError("INVALID_INPUT", 400);

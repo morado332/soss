@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { and, asc, desc, eq, gte, lt, sql, count } from "drizzle-orm";
-import { Banknote, Percent, Wallet, CalendarDays, ShoppingCart, Receipt, Package, Download, FileText, TriangleAlert, ArrowRight, Users } from "lucide-react";
+import { Banknote, Percent, Wallet, CalendarDays, ShoppingCart, Receipt, Package, Download, FileText, TriangleAlert, ArrowRight, Users, CalendarClock, GraduationCap } from "lucide-react";
+import { tenantModules } from "@/lib/guard";
+import type { ModuleKey } from "@/modules/registry";
+import { FahrschuleHome } from "@/modules/fahrschule/ui/home";
 import { currentUser, hasPermission, isPlatformAdmin } from "@/lib/auth";
 import { db } from "@/db";
 import { tenants, transactions, appointments, products, invoices, orders, queue_tickets, projects, gigs, loans, school_classes, recipes, accountant_links } from "@/db/schema";
@@ -27,8 +30,8 @@ export default async function DashboardPage() {
   if (user.role === "accountant") {
     const clients = await db.select({
       id: tenants.id, name: tenants.name, profession: tenants.profession, status: tenants.status,
-      invoices: sql<number>`(select count(*)::int from invoices i where i.tenant_id = ${tenants.id})`,
-      revenue: sql<number>`(select coalesce(sum(total_cents),0)::bigint from invoices i where i.tenant_id = ${tenants.id} and i.issued_at >= date_trunc('month', now()))`,
+      invoices: sql<number>`(select count(*)::int from invoices i where i.tenant_id = "tenants"."id")`,
+      revenue: sql<number>`(select coalesce(sum(total_cents),0)::bigint from invoices i where i.tenant_id = "tenants"."id" and i.issued_at >= date_trunc('month', now()))`,
     }).from(accountant_links).innerJoin(tenants, eq(accountant_links.tenant_id, tenants.id))
       .where(and(eq(accountant_links.accountant_user_id, user.id), eq(accountant_links.status, "active"))).orderBy(asc(tenants.name));
     const now = new Date();
@@ -70,7 +73,13 @@ export default async function DashboardPage() {
   if (!tenant) redirect("/login");
   const prof = professionByKey(tenant.profession);
   const can = (p: string) => hasPermission(user, p);
-  const showMoney = can("reports:read");
+  // Only widgets of this business type's modules are shown (src/modules/registry.ts).
+  const mods = await tenantModules(tenant);
+  const has = (m: ModuleKey) => mods.has(m);
+  const showMoney = can("reports:read") && has("pos");
+  const showInvoices = can("invoices:read") && has("invoices");
+  // A driving school's appointments are its lessons — shown in its own overview instead.
+  const showAppts = has("appointments") && !has("fahrschule") && can("appointments:read");
 
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
@@ -98,10 +107,12 @@ export default async function DashboardPage() {
   const date = (d: Date) => new Date(d).toLocaleDateString(locale);
 
   const quick = [
-    can("pos:use") && { href: "/dashboard/pos", label: t("qa_sale"), icon: ShoppingCart },
-    can("appointments:write") && { href: "/dashboard/appointments", label: t("qa_appt"), icon: CalendarDays },
-    can("invoices:write") && { href: "/dashboard/invoices", label: t("qa_invoice"), icon: Receipt },
-    can("products:write") && { href: "/dashboard/products", label: t("qa_product"), icon: Package },
+    has("fahrschule") && can("appointments:write") && { href: "/dashboard/m/fahrschule/lessons", label: t("fs_new_lesson"), icon: CalendarClock },
+    has("fahrschule") && can("fahrschule:manage") && { href: "/dashboard/m/fahrschule/students", label: t("fs_new_student"), icon: GraduationCap },
+    has("pos") && can("pos:use") && { href: "/dashboard/pos", label: t("qa_sale"), icon: ShoppingCart },
+    has("appointments") && can("appointments:write") && { href: "/dashboard/appointments", label: t("qa_appt"), icon: CalendarDays },
+    has("invoices") && can("invoices:write") && { href: "/dashboard/invoices", label: t("qa_invoice"), icon: Receipt },
+    has("products") && can("products:write") && { href: "/dashboard/products", label: t("qa_product"), icon: Package },
   ].filter(Boolean) as { href: string; label: string; icon: typeof ShoppingCart }[];
 
   return (
@@ -112,16 +123,18 @@ export default async function DashboardPage() {
         actions={<Badge tone={statusTone(tenant.status)}>{st(tenant.status)}</Badge>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {has("fahrschule") && <FahrschuleHome tenantId={tid} t={t} locale={locale} />}
+
+      {(showMoney || showAppts) && <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {showMoney && <Stat label={t("d_revenue")} value={money(totals.gross)} sub={t("d_revenueSub")} icon={Banknote} />}
         {showMoney && <Stat label={t("d_commission")} value={money(totals.fee)} sub={`${((tenant.commission_percent ?? 500) / 100).toLocaleString(locale)} % + ${money(tenant.commission_fixed_cents ?? 30)}`} icon={Percent} tone="rose" />}
         {showMoney && <Stat label={t("d_net")} value={money(totals.net)} sub={t("d_netSub")} icon={Wallet} tone="emerald" />}
-        <Stat label={t("d_today")} value={String(apptCount)} sub={t("d_todaySub")} icon={CalendarDays} tone="sky" />
-      </div>
+        {showAppts && <Stat label={t("d_today")} value={String(apptCount)} sub={t("d_todaySub")} icon={CalendarDays} tone="sky" />}
+      </div>}
 
       {quick.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {quick.map((q) => (
+          {quick.slice(0, 4).map((q) => (
             <Link key={q.href} href={q.href} className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-700">
               <span className="grid h-10 w-10 place-items-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400"><q.icon className="h-5 w-5" /></span>
               <span className="flex-1 text-sm font-medium">{q.label}</span>
@@ -131,19 +144,19 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {lowStock.length > 0 && (
+      {has("products") && lowStock.length > 0 && (
         <Alert tone="warning" icon={TriangleAlert}>
           <b>{t("d_lowStock")}:</b> {t("d_lowStockText")} {lowStock.map((x) => `${x.name} (${x.stock})`).join(" · ")}
         </Alert>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      {(showMoney || showAppts) && <div className="grid gap-6 xl:grid-cols-3">
         {showMoney && (
           <Card title={t("r_last7")} className="xl:col-span-2">
             <RevenueBars data={daily} locale={locale} label={t("r_last7")} />
           </Card>
         )}
-        <Card title={t("d_today")} action={can("appointments:read") ? <Link href="/dashboard/appointments" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link> : undefined} padded={false} className={showMoney ? "" : "xl:col-span-3"}>
+        {showAppts && <Card title={t("d_today")} action={<Link href="/dashboard/appointments" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link>} padded={false} className={showMoney ? "" : "xl:col-span-3"}>
           {todayAppts.length === 0 ? <div className="p-5"><Empty icon={CalendarDays} text={t("d_noAppts")} /></div> : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {todayAppts.map((a) => (
@@ -155,12 +168,12 @@ export default async function DashboardPage() {
               ))}
             </ul>
           )}
-        </Card>
-      </div>
+        </Card>}
+      </div>}
 
-      {showMoney && (
+      {(showMoney || showInvoices) && (
         <div className="grid gap-6 xl:grid-cols-2">
-          <Card title={t("d_recentTx")} action={<Link href="/dashboard/reports" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link>} padded={false}>
+          {showMoney && <Card title={t("d_recentTx")} action={<Link href="/dashboard/reports" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link>} padded={false}>
             {recentTx.length === 0 ? <div className="p-5"><Empty icon={ShoppingCart} text={t("d_noTx")} /></div> : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recentTx.map((x) => (
@@ -172,8 +185,8 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
-          </Card>
-          <Card title={t("d_recentInv")} action={can("invoices:read") ? <Link href="/dashboard/invoices" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link> : undefined} padded={false}>
+          </Card>}
+          {showInvoices && <Card title={t("d_recentInv")} className={showMoney ? "" : "xl:col-span-2"} action={can("invoices:read") ? <Link href="/dashboard/invoices" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link> : undefined} padded={false}>
             {recentInv.length === 0 ? <div className="p-5"><Empty icon={Receipt} text={t("d_noInv")} /></div> : (
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {recentInv.map((i) => (
@@ -186,13 +199,13 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
-          </Card>
+          </Card>}
         </div>
       )}
 
       {/* Industry modules */}
       {p === "praxis" && (
-        <Card title={t("d_queue")}>
+        <Card title={t("d_queue")} action={<Link href="/dashboard/queue" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link>}>
           {myTickets.length === 0 ? <Empty text={t("q_empty")} /> : <div className="flex flex-wrap gap-2">{myTickets.map((x) => <Badge key={x.id} tone={statusTone(x.status)}>#{x.number} {x.patient_name ?? ""} · {st(x.status)}</Badge>)}</div>}
         </Card>
       )}

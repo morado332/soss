@@ -34,7 +34,7 @@ const Body = z.object({
 
 // Create invoice (GoBD: never edited/deleted after issue — corrections via Storno)
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("invoices:write", { write: true });
+  const ctx = await apiTenant("invoices:write", { write: true, module: "invoices" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);
@@ -60,7 +60,7 @@ const Patch = z.object({ invoice_id: z.string().uuid() }).strict();
 
 // Storno: creates a cancelling invoice linked to the original (GoBD-compliant) and reverses the payment split.
 export async function PATCH(req: NextRequest) {
-  const ctx = await apiTenant("invoices:write", { write: true });
+  const ctx = await apiTenant("invoices:write", { write: true, module: "invoices" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Patch.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);

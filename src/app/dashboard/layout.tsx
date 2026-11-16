@@ -7,6 +7,8 @@ import { professionByKey, professionName } from "@/lib/professions";
 import { AppShell, type NavItem } from "@/components/app-shell";
 import { getI18n, getTheme } from "@/lib/i18n-server";
 import type { DictKey } from "@/lib/i18n";
+import { tenantModules } from "@/lib/guard";
+import { MODULE_NAV } from "@/modules/registry";
 
 export const dynamic = "force-dynamic";
 
@@ -36,17 +38,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const notifs = await db.select({ id: notifications.id, title: notifications.title, body: notifications.body, created_at: notifications.created_at })
     .from(notifications).where(and(eq(notifications.tenant_id, tenant.id), eq(notifications.is_read, false))).orderBy(desc(notifications.created_at)).limit(8);
   const prof = professionByKey(tenant.profession);
-  const can = (p: string) => hasPermission(user, p);
-  const nav: NavItem[] = [
-    { href: "/dashboard", label: "nav_dashboard", icon: "dashboard", exact: true },
-    ...(can("pos:use") ? [{ href: "/dashboard/pos", label: "nav_pos", icon: "pos" } as NavItem] : []),
-    ...(can("appointments:read") ? [{ href: "/dashboard/appointments", label: "nav_appointments", icon: "appointments" } as NavItem] : []),
-    ...(can("products:write") ? [{ href: "/dashboard/products", label: "nav_products", icon: "products" } as NavItem] : []),
-    ...(can("invoices:read") ? [{ href: "/dashboard/invoices", label: "nav_invoices", icon: "invoices" } as NavItem] : []),
-    ...(can("reports:read") ? [{ href: "/dashboard/reports", label: "nav_reports", icon: "reports" } as NavItem, { href: "/dashboard/ai", label: "nav_ai", icon: "ai" } as NavItem] : []),
-    ...(user.role === "tenant_owner" ? [{ href: "/dashboard/accountant", label: "nav_accountant", icon: "accountant" } as NavItem] : []),
-    { href: "/dashboard/settings", label: "nav_settings", icon: "settings" },
-  ];
+  // Menu = only the modules of this business type (see src/modules/registry.ts), filtered by staff permissions.
+  const modules = await tenantModules(tenant);
+  const nav: NavItem[] = [{ href: "/dashboard", label: "nav_dashboard", icon: "dashboard", exact: true }];
+  for (const m of modules) {
+    for (const item of MODULE_NAV[m]) {
+      if (item.ownerOnly && user.role !== "tenant_owner") continue;
+      if (item.perm && !hasPermission(user, item.perm)) continue;
+      nav.push({ href: item.href, label: item.label, icon: item.icon });
+    }
+  }
+  nav.push({ href: "/dashboard/settings", label: "nav_settings", icon: "settings" });
   return (
     <AppShell
       nav={nav} theme={theme} user={{ name: user.name, email: user.email, role }}

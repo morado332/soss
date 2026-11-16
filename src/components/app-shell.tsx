@@ -4,7 +4,8 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, CalendarDays, Package, Receipt, Calculator, Sparkles, ChartColumn, Settings,
-  Building2, Users, ScrollText, KeyRound, Menu, X, LogOut, Bell, ExternalLink, ShieldCheck, TriangleAlert, type LucideIcon,
+  Building2, Users, ScrollText, KeyRound, Menu, X, LogOut, Bell, ExternalLink, ShieldCheck, TriangleAlert,
+  BellRing, Ticket, GraduationCap, UserCheck, Car, CalendarClock, BookOpen, type LucideIcon,
 } from "lucide-react";
 import { Logo, cx } from "./ui";
 import { LanguageSwitcher, ThemeToggle, useI18n } from "./providers";
@@ -14,6 +15,7 @@ const ICONS: Record<string, LucideIcon> = {
   dashboard: LayoutDashboard, pos: ShoppingCart, appointments: CalendarDays, products: Package, invoices: Receipt,
   accountant: Calculator, ai: Sparkles, reports: ChartColumn, settings: Settings, tenants: Building2, users: Users,
   audit: ScrollText, account: KeyRound, shield: ShieldCheck,
+  reminders: BellRing, queue: Ticket, students: GraduationCap, instructors: UserCheck, vehicles: Car, lessons: CalendarClock, theory: BookOpen,
 };
 
 export type NavItem = { href: string; label: DictKey; icon: keyof typeof ICONS; exact?: boolean };

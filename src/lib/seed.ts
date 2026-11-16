@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { users, tenants, products, services, appointments, invoices, invoice_items, transactions, features, tenant_features, accountant_links, notifications, projects, tasks, queue_tickets, orders, loans, gigs, recipes, school_classes, subscriptions, platform_settings } from "@/db/schema";
+import { users, tenants, products, services, appointments, invoices, invoice_items, transactions, features, accountant_links, fs_instructors, fs_vehicles, fs_students, fs_lessons, notifications, projects, tasks, queue_tickets, orders, loans, gigs, recipes, school_classes, subscriptions, platform_settings } from "@/db/schema";
 import { hashPassword } from "./auth";
 import { nextInvoiceNumber } from "./guard";
 import { PROFESSIONS } from "./professions";
@@ -12,7 +12,6 @@ export const DEMO_PASSWORD = "Demo12345!";
 const SAMPLE: Record<string, { products: [string, number, number, string][]; service?: [string, number, number] }> = {
   kiosk: { products: [["Cola 0,5 L", 150, 4, "4001234567890"], ["Brötchen", 80, 120, "4001234567891"], ["Schokoriegel", 120, 45, "4001234567892"], ["Mineralwasser 1 L", 99, 60, "4001234567893"], ["Tageszeitung", 250, 18, "4001234567894"], ["Kaffee to go", 220, 200, "4001234567895"]] },
   friseur: { products: [["Shampoo Repair", 1490, 12, "4002000000001"], ["Haarwachs", 990, 3, "4002000000002"], ["Pflegespülung", 1290, 9, "4002000000003"]], service: ["Haarschnitt & Styling", 45, 4500] },
-  fahrschule: { products: [["Fahrstunde 45 Min.", 5900, 999, "4003000000001"], ["Sonderfahrt Autobahn", 7900, 999, "4003000000002"], ["Lehrbuch Theorie", 2490, 25, "4003000000003"]], service: ["Praktische Fahrstunde", 45, 5900] },
   restaurant: { products: [["Schnitzel Wiener Art", 1450, 999, "4004000000001"], ["Apfelschorle 0,4 L", 390, 80, "4004000000002"], ["Tagessuppe", 590, 40, "4004000000003"]] },
   beauty: { products: [["Nagellack", 890, 30, "4005000000001"]], service: ["Maniküre", 60, 3500] },
   praxis: { products: [["Privatleistung Beratung", 4000, 999, "4006000000001"]], service: ["Kontrolltermin", 20, 0] },
@@ -44,7 +43,6 @@ export async function seedDemo() {
         ust_idnr: "DE123456789", steuernummer: "12/345/67890", terminal_id: `TERM-${p.key.toUpperCase()}-01`, tse_serial: `TSE-${p.key.toUpperCase()}-001`,
       }).returning();
       await tx.insert(subscriptions).values({ tenant_id: t.id, plan: "pro", status: "active", monthly_fee_cents: p.monthlyFee * 100 });
-      await tx.insert(tenant_features).values(["appointments", "pos", "invoices", "accountant", "ai"].map((k) => ({ tenant_id: t.id, feature_key: k })));
       await tx.insert(users).values({ email: `owner@${p.key}.de`, password_hash: pw, name: `${p.nameDe} Inhaber`, role: "tenant_owner", tenant_id: t.id, permissions: ["*"] });
       if (["friseur", "kiosk", "fahrschule"].includes(p.key)) await tx.insert(accountant_links).values({ accountant_user_id: acc.id, tenant_id: t.id });
 
@@ -91,6 +89,40 @@ export async function seedDemo() {
 
     const all = await tx.select({ id: tenants.id, slug: tenants.slug }).from(tenants);
     const T = Object.fromEntries(all.map((r) => [r.slug, r.id]));
+
+    // ---- driving school module demo data
+    {
+      const tid = T.fahrschule;
+      const ins = await tx.insert(fs_instructors).values([
+        { tenant_id: tid, name: "Max Becker", email: "max@fahrschule-demo.de", license_classes: "B, BE" },
+        { tenant_id: tid, name: "Julia Wagner", email: "julia@fahrschule-demo.de", license_classes: "B, A" },
+      ]).returning();
+      const veh = await tx.insert(fs_vehicles).values([
+        { tenant_id: tid, name: "VW Golf 8", plate: "B-FS 101", transmission: "manual", next_service: new Date(now + 9 * day).toISOString().slice(0, 10) },
+        { tenant_id: tid, name: "Toyota Yaris Hybrid", plate: "B-FS 202", transmission: "automatic", next_service: new Date(now + 60 * day).toISOString().slice(0, 10) },
+      ]).returning();
+      const stu = await tx.insert(fs_students).values([
+        { tenant_id: tid, name: "Lena Schmidt", email: "lena@example.de", instructor_id: ins[0].id, theory_progress: 92, theory_passed: true, theory_external_id: "LS-1001" },
+        { tenant_id: tid, name: "Jonas Weber", email: "jonas@example.de", instructor_id: ins[0].id, theory_progress: 64, theory_external_id: "JW-1002" },
+        { tenant_id: tid, name: "Mia Fischer", email: "mia@example.de", instructor_id: ins[1].id, theory_progress: 35 },
+        { tenant_id: tid, name: "Tim Braun", email: "tim@example.de", instructor_id: ins[1].id, theory_progress: 100, theory_passed: true, practical_passed: true, status: "finished" },
+      ]).returning();
+      const at = (dOff: number, h: number) => { const x = new Date(now + dOff * day); x.setHours(h, 0, 0, 0); return x; };
+      const lesson = (s: number, i: number, v: number | null, type: string, dOff: number, h: number, units: number, status: string) => ({
+        tenant_id: tid, student_id: stu[s].id, instructor_id: ins[i].id, vehicle_id: v === null ? null : veh[v].id, type,
+        starts_at: at(dOff, h), ends_at: new Date(at(dOff, h).getTime() + units * 45 * 60_000), units, status, price_cents: type === "normal" ? 5900 * units : 7900 * units,
+      });
+      const past = [];
+      for (let k = 0; k < 14; k++) past.push(lesson(0, 0, 0, "normal", -40 + k * 2, 9 + (k % 3) * 2, 1, "completed"));
+      past.push(lesson(0, 0, 0, "ueberland", -12, 14, 2, "completed"), lesson(0, 0, 0, "ueberland", -10, 14, 2, "completed"), lesson(0, 0, 0, "autobahn", -8, 10, 2, "completed"), lesson(0, 0, 0, "nacht", -6, 19, 2, "completed"));
+      for (let k = 0; k < 8; k++) past.push(lesson(1, 0, 1, "normal", -20 + k * 2, 15, 1, "completed"));
+      for (let k = 0; k < 3; k++) past.push(lesson(2, 1, 1, "normal", -6 + k * 2, 11, 1, "completed"));
+      await tx.insert(fs_lessons).values([
+        ...past,
+        lesson(0, 0, 0, "autobahn", 0, 10, 2, "scheduled"), lesson(1, 0, 1, "normal", 0, 15, 1, "scheduled"),
+        lesson(2, 1, 1, "normal", 1, 9, 2, "scheduled"), lesson(1, 0, 0, "ueberland", 2, 13, 2, "scheduled"), lesson(0, 1, 0, "nacht", 3, 19, 2, "scheduled"),
+      ]);
+    }
 
     await tx.insert(users).values({ email: "staff@friseur.de", password_hash: pw, name: "Anna (Kasse)", role: "tenant_staff", tenant_id: T.friseur, permissions: STAFF_PRESETS.cashier });
     await tx.insert(projects).values({ tenant_id: T.design, name: "Logo-Relaunch Café Berlin", client_name: "Café Berlin", deadline: new Date(now + 5 * day), status: "open", amount_cents: 450000 });

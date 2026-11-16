@@ -6,6 +6,7 @@ import { tenants, users, subscriptions, tenant_features } from "@/db/schema";
 import { audit, hashPassword, destroyAllSessions } from "@/lib/auth";
 import { apiRoot, jsonError } from "@/lib/guard";
 import { PROFESSIONS, professionByKey } from "@/lib/professions";
+import { PROFESSION_MODULES } from "@/modules/registry";
 import { clientIp, emailSchema, passwordSchema, readJson, taxRateSchema } from "@/lib/security";
 import { randomBytes } from "crypto";
 
@@ -18,7 +19,8 @@ export async function GET() {
     id: tenants.id, name: tenants.name, slug: tenants.slug, profession: tenants.profession, status: tenants.status, plan: tenants.plan,
     monthly_fee_cents: tenants.monthly_fee_cents, commission_percent: tenants.commission_percent, commission_fixed_cents: tenants.commission_fixed_cents,
     tax_rate_bp: tenants.tax_rate_bp, created_at: tenants.created_at,
-    owner_email: sql<string | null>`(select email from users u where u.tenant_id = ${tenants.id} and u.role = 'tenant_owner' order by u.created_at limit 1)`,
+    owner_email: sql<string | null>`(select email from users u where u.tenant_id = "tenants"."id" and u.role = 'tenant_owner' order by u.created_at limit 1)`,
+    disabled_modules: sql<string[]>`coalesce((select array_agg(f.feature_key) from tenant_features f where f.tenant_id = "tenants"."id" and f.enabled = false), '{}')`,
   }).from(tenants).orderBy(desc(tenants.created_at));
   return NextResponse.json(rows);
 }
@@ -58,7 +60,6 @@ export async function POST(req: NextRequest) {
     }).returning();
     await tx.insert(users).values({ email: d.owner_email, password_hash: hash, name: d.owner_name, role: "tenant_owner", tenant_id: t.id, permissions: ["*"] });
     await tx.insert(subscriptions).values({ tenant_id: t.id, plan: d.plan, status: "active", monthly_fee_cents: fee });
-    await tx.insert(tenant_features).values(["appointments", "pos", "invoices", "accountant", "ai"].map((k) => ({ tenant_id: t.id, feature_key: k })));
     return t;
   });
   await audit(user.id, tenant.id, "tenant.create", "tenant", tenant.id, null, { name: d.name, profession: d.profession, owner: d.owner_email }, clientIp(req));
@@ -73,6 +74,8 @@ const PatchBody = z.object({
   commission_fixed_cents: z.number().int().min(0).max(1000).optional(),
   tax_rate_bp: taxRateSchema.optional(),
   owner_password: passwordSchema.optional(),
+  // module key → enabled. Only modules that exist for the business's profession are accepted.
+  modules: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.boolean()).optional(),
 }).strict();
 
 export async function PATCH(req: NextRequest) {
@@ -90,6 +93,14 @@ export async function PATCH(req: NextRequest) {
   if (d.commission_fixed_cents != null) patch.commission_fixed_cents = d.commission_fixed_cents;
   if (d.tax_rate_bp != null) patch.tax_rate_bp = d.tax_rate_bp;
   await db.update(tenants).set(patch).where(eq(tenants.id, d.tenant_id));
+  if (d.modules) {
+    const allowed = new Set(PROFESSION_MODULES[old.profession] ?? []);
+    for (const [key, enabled] of Object.entries(d.modules)) {
+      if (!allowed.has(key as never)) continue;
+      await db.delete(tenant_features).where(and(eq(tenant_features.tenant_id, d.tenant_id), eq(tenant_features.feature_key, key)));
+      if (!enabled) await db.insert(tenant_features).values({ tenant_id: d.tenant_id, feature_key: key, enabled: false });
+    }
+  }
   if (d.owner_password) {
     const [owner] = await db.select({ id: users.id }).from(users).where(and(eq(users.tenant_id, d.tenant_id), eq(users.role, "tenant_owner"))).limit(1);
     if (owner) {

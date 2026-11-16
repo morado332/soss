@@ -13,7 +13,7 @@ import type { DictKey } from "@/lib/i18n";
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const { tenant } = await requireTenantPage("reports:read");
+  const { tenant } = await requireTenantPage("reports:read", false, "reports");
   const { t, locale } = await getI18n();
   const money = (c: number) => eur(c, locale);
   const tid = tenant.id;

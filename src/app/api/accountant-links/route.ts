@@ -22,7 +22,7 @@ export async function GET() {
 const Body = z.object({ accountant_id: z.string().trim().toUpperCase().regex(/^ACC-\d{3,10}$/) }).strict();
 
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant(undefined, { ownerOnly: true, write: true });
+  const ctx = await apiTenant(undefined, { ownerOnly: true, write: true, module: "accountant" });
   if (ctx instanceof NextResponse) return ctx;
   if (!rateLimit(`acclink:${ctx.tenant.id}`, 10, 10 * 60_000).ok) return jsonError("RATE_LIMITED", 429);
   const parsed = Body.safeParse(await readJson(req));
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const ctx = await apiTenant(undefined, { ownerOnly: true, write: true });
+  const ctx = await apiTenant(undefined, { ownerOnly: true, write: true, module: "accountant" });
   if (ctx instanceof NextResponse) return ctx;
   const id = z.string().uuid().safeParse(req.nextUrl.searchParams.get("id"));
   if (!id.success) return jsonError("INVALID_INPUT", 400);

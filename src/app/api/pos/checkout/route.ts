@@ -19,7 +19,7 @@ const Body = z.object({
 
 export async function GET() {
   // Rates needed for the client-side preview (never trusted for the actual booking)
-  const ctx = await apiTenant("pos:use");
+  const ctx = await apiTenant("pos:use", { module: "pos" });
   if (ctx instanceof NextResponse) return ctx;
   const t = ctx.tenant;
   return NextResponse.json({ tax_rate_bp: t.tax_rate_bp ?? 1900, commission_percent: t.commission_percent ?? 500, commission_fixed_cents: t.commission_fixed_cents ?? 30, status: t.status });
@@ -30,7 +30,7 @@ class CheckoutError extends Error {}
 // POS checkout: GoBD invoice (sequential per tenant) + transaction with frozen commission snapshot.
 // Everything happens in one DB transaction; stock is decremented atomically (no overselling).
 export async function POST(req: NextRequest) {
-  const ctx = await apiTenant("pos:use", { write: true });
+  const ctx = await apiTenant("pos:use", { write: true, module: "pos" });
   if (ctx instanceof NextResponse) return ctx;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError("INVALID_INPUT", 400);

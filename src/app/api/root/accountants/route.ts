@@ -14,7 +14,7 @@ export async function GET() {
   if (user instanceof NextResponse) return user;
   const rows = await db.select({
     id: users.id, name: users.name, email: users.email, accountant_id: users.accountant_id, is_active: users.is_active, last_login_at: users.last_login_at,
-    clients: sql<number>`(select count(*)::int from accountant_links l where l.accountant_user_id = ${users.id} and l.status = 'active')`,
+    clients: sql<number>`(select count(*)::int from accountant_links l where l.accountant_user_id = "users"."id" and l.status = 'active')`,
   }).from(users).where(eq(users.role, "accountant")).orderBy(desc(users.created_at));
   return NextResponse.json(rows);
 }
