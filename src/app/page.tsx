@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import { ArrowRight, CalendarDays, ShoppingCart, ScanBarcode, Receipt, Calculator, Sparkles, Bell, ChartColumn, CreditCard, ShieldCheck, FileText, Landmark, Lock, ScrollText, Check, Banknote, Globe } from "lucide-react";
 import { PROFESSIONS, professionName, professionTagline } from "@/lib/professions";
 import { LanguageSwitcher, ThemeToggle } from "@/components/providers";
-import { Logo, btnPrimary, btnSecondary, cx } from "@/components/ui";
+import { btnPrimary, btnSecondary, cx } from "@/components/ui";
 import { getI18n, getTheme } from "@/lib/i18n-server";
+import { getBranding } from "@/core/platform";
 import type { Lang } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
@@ -40,16 +42,18 @@ const PLANS: { name: string; price: number; features: Tri[]; popular?: boolean }
 export default async function Home() {
   const { t, lang } = await getI18n();
   const theme = await getTheme();
+  const b = await getBranding();
+  const plans = PLANS.slice(0, b.plans.length).map((p, i) => ({ ...p, name: b.plans[i].name, price: b.plans[i].price }));
   return (
     <div className="bg-white dark:bg-slate-950">
       <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur-lg dark:border-slate-800/70 dark:bg-slate-950/80">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link href="/"><Logo /></Link>
           <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex dark:text-slate-300">
-            <a href="#branchen" className="hover:text-slate-900 dark:hover:text-white">{t("l_navIndustries")}</a>
-            <a href="#funktionen" className="hover:text-slate-900 dark:hover:text-white">{t("l_navModules")}</a>
-            <a href="#compliance" className="hover:text-slate-900 dark:hover:text-white">{t("l_navCompliance")}</a>
-            <a href="#preise" className="hover:text-slate-900 dark:hover:text-white">{t("l_navPricing")}</a>
+            {b.showIndustries && <a href="#branchen" className="hover:text-slate-900 dark:hover:text-white">{t("l_navIndustries")}</a>}
+            {b.showModules && <a href="#funktionen" className="hover:text-slate-900 dark:hover:text-white">{t("l_navModules")}</a>}
+            {b.showCompliance && <a href="#compliance" className="hover:text-slate-900 dark:hover:text-white">{t("l_navCompliance")}</a>}
+            {b.showPricing && <a href="#preise" className="hover:text-slate-900 dark:hover:text-white">{t("l_navPricing")}</a>}
           </nav>
           <div className="flex items-center gap-2">
             <div className="hidden sm:block"><LanguageSwitcher /></div>
@@ -67,7 +71,7 @@ export default async function Home() {
             <h1 className="mt-6 text-4xl font-semibold leading-[1.1] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl dark:text-white">
               {t("l_title1")}<br /><span className="bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent dark:from-indigo-400 dark:to-violet-400">{t("l_title2")}</span>
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-400">{t("l_sub")}</p>
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-400">{b.tagline || t("l_sub")}</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link href="/login" className={cx(btnPrimary, "h-12 px-6 text-base")}>{t("l_ctaStart")}<ArrowRight className="h-4 w-4 rtl:rotate-180" /></Link>
               <a href="#branchen" className={cx(btnSecondary, "h-12 px-6 text-base")}>{t("l_ctaIndustries")}</a>
@@ -106,7 +110,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <section id="branchen" className="border-t border-slate-200 bg-slate-50 py-24 dark:border-slate-800 dark:bg-slate-900/40">
+      {b.showIndustries && <section id="branchen" className="border-t border-slate-200 bg-slate-50 py-24 dark:border-slate-800 dark:bg-slate-900/40">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="max-w-2xl"><h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{t("l_indTitle")}</h2><p className="mt-3 text-slate-600 dark:text-slate-400">{t("l_indSub")}</p></div>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -122,9 +126,9 @@ export default async function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section id="funktionen" className="py-24">
+      {b.showModules && <section id="funktionen" className="py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{t("l_modTitle")}</h2><p className="mt-3 text-slate-600 dark:text-slate-400">{t("l_modSub")}</p></div>
           <div className="mt-14 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -137,9 +141,9 @@ export default async function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section id="compliance" className="bg-slate-950 py-24 text-white">
+      {b.showCompliance && <section id="compliance" className="bg-slate-950 py-24 text-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="max-w-2xl"><h2 className="text-3xl font-semibold tracking-tight">{t("l_compTitle")}</h2><p className="mt-3 text-slate-400">{t("l_compSub")}</p></div>
           <div className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -152,13 +156,13 @@ export default async function Home() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       <section id="preise" className="py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{t("l_priceTitle")}</h2><p className="mt-3 text-slate-600 dark:text-slate-400">{t("l_priceSub")}</p></div>
+          {b.showPricing && <><div className="mx-auto max-w-2xl text-center"><h2 className="text-3xl font-semibold tracking-tight text-slate-900 dark:text-white">{t("l_priceTitle")}</h2><p className="mt-3 text-slate-600 dark:text-slate-400">{t("l_priceSub")}</p></div>
           <div className="mx-auto mt-14 grid max-w-5xl gap-6 md:grid-cols-3">
-            {PLANS.map((p) => (
+            {plans.map((p) => (
               <div key={p.name} className={cx("relative rounded-2xl border bg-white p-8 dark:bg-slate-900", p.popular ? "border-indigo-500 shadow-xl shadow-indigo-500/10 ring-1 ring-indigo-500" : "border-slate-200 dark:border-slate-800")}>
                 {p.popular && <span className="absolute -top-3 start-8 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white">{t("l_popular")}</span>}
                 <h3 className="font-semibold text-slate-900 dark:text-white">{p.name}</h3>
@@ -170,6 +174,7 @@ export default async function Home() {
               </div>
             ))}
           </div>
+          </>}
           <div className="mx-auto mt-20 max-w-5xl rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 px-8 py-14 text-center text-white">
             <h3 className="text-2xl font-semibold tracking-tight sm:text-3xl">{t("l_ctaTitle")}</h3>
             <p className="mt-3 text-indigo-100">{t("l_ctaSub")}</p>
@@ -180,8 +185,13 @@ export default async function Home() {
 
       <footer className="border-t border-slate-200 py-10 dark:border-slate-800">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 text-sm text-slate-500 sm:flex-row sm:px-6">
-          <div className="flex items-center gap-3"><Logo /><span className="hidden sm:inline">· {t("l_footer")}</span></div>
-          <div className="flex gap-6"><Link href="/login" className="hover:text-slate-900 dark:hover:text-white">{t("login")}</Link><span>© {new Date().getFullYear()} Arena</span></div>
+          <div className="flex items-center gap-3"><Logo /><span className="hidden sm:inline">· {b.footer || t("l_footer")}</span></div>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+            {b.contactEmail && <a href={`mailto:${b.contactEmail}`} className="hover:text-slate-900 dark:hover:text-white">{b.contactEmail}</a>}
+            {b.contactPhone && <a href={`tel:${b.contactPhone.replace(/\s/g, "")}`} className="hover:text-slate-900 dark:hover:text-white" dir="ltr">{b.contactPhone}</a>}
+            {b.address && <span>{b.address}</span>}
+            <Link href="/login" className="hover:text-slate-900 dark:hover:text-white">{t("login")}</Link><span>© {new Date().getFullYear()} {b.siteName}</span>
+          </div>
         </div>
       </footer>
     </div>

@@ -12,6 +12,8 @@ export const isLang = (v: unknown): v is Lang => v === "de" || v === "en" || v =
 export const isRtl = (l: Lang) => l === "ar";
 export const locale = (l: Lang) => (l === "de" ? "de-DE" : l === "en" ? "en-GB" : "ar-u-nu-latn");
 
+import { D2 } from "./i18n-v2";
+
 const D = {
   // ---- generic
   appName: ["Arena", "Arena", "Arena"],
@@ -576,6 +578,7 @@ const D = {
   err_NOTHING_TO_BILL: ["Keine abgeschlossenen, nicht abgerechneten Stunden.", "No completed, uninvoiced lessons.", "لا توجد حصص منجزة غير مفوترة."],
   err_ALREADY_INVOICED: ["Bereits abgerechnet – Änderungen nur per Storno.", "Already invoiced — changes only via cancellation.", "تمت فوترتها — التعديل فقط عبر فاتورة إلغاء."],
   err_BAD_ORIGIN: ["Anfrage blockiert (Herkunft ungültig).", "Request blocked (invalid origin).", "تم حظر الطلب (مصدر غير صالح)."],
+  ...D2,
 } as const satisfies Record<string, readonly [string, string, string]>;
 
 export type DictKey = keyof typeof D;

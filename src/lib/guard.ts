@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { tenants, invoice_counters, tenant_features } from "@/db/schema";
 import { activeModules, type ModuleKey } from "@/modules/registry";
 import { currentUser, hasPermission, isPlatformAdmin, type CurrentUser } from "./auth";
-import type { Permission } from "./permissions";
+import type { Permission, PlatformPermission } from "./permissions";
 
 export type Tenant = typeof tenants.$inferSelect;
 export type TenantCtx = { user: CurrentUser; tenant: Tenant };
@@ -19,11 +19,19 @@ export async function apiUser(): Promise<CurrentUser | NextResponse> {
   return user ?? jsonError("UNAUTHORIZED", 401);
 }
 
-/** Platform admins only (root / super_admin). */
-export async function apiRoot(): Promise<CurrentUser | NextResponse> {
+/** Platform staff: the Root has every permission, a Super Admin only the ones the Root granted. */
+export function hasPlatformPermission(user: CurrentUser, perm?: PlatformPermission | "root") {
+  if (user.role === "root") return true;
+  if (user.role !== "super_admin" || !perm || perm === "root") return false;
+  return ((user.permissions as string[] | null) ?? []).includes(perm);
+}
+
+/** Platform admins. Without a permission: Root only. */
+export async function apiRoot(perm?: PlatformPermission | "root"): Promise<CurrentUser | NextResponse> {
   const user = await currentUser();
   if (!user) return jsonError("UNAUTHORIZED", 401);
   if (!isPlatformAdmin(user)) return jsonError("FORBIDDEN", 403);
+  if (!hasPlatformPermission(user, perm ?? "root")) return jsonError("FORBIDDEN_PERMISSION", 403);
   return user;
 }
 

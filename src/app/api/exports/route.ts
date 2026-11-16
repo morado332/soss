@@ -4,7 +4,7 @@ import { and, asc, eq, gte, inArray, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { invoices, tenants, accountant_links } from "@/db/schema";
 import { currentUser, hasPermission, isPlatformAdmin, audit } from "@/lib/auth";
-import { jsonError } from "@/lib/guard";
+import { hasPlatformPermission, jsonError } from "@/lib/guard";
 import { csvCell, xmlEscape, clientIp } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
 
   let allowed: string[] = [];
   if (isPlatformAdmin(user)) {
+    if (!hasPlatformPermission(user, "platform:finance")) return jsonError("FORBIDDEN", 403);
     allowed = tenant_id ? [tenant_id] : (await db.select({ id: tenants.id }).from(tenants)).map((t) => t.id);
   } else if (user.role === "accountant") {
     const links = await db.select({ tid: accountant_links.tenant_id }).from(accountant_links)

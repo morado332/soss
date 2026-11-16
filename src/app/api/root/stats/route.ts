@@ -5,7 +5,7 @@ import { tenants, transactions } from "@/db/schema";
 import { apiRoot } from "@/lib/guard";
 export const dynamic = "force-dynamic";
 export async function GET() {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:finance");
   if (user instanceof NextResponse) return user;
   const [t] = await db.select({
     total: sql<number>`count(*)::int`,

@@ -4,7 +4,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { tenants, users, subscriptions, tenant_features } from "@/db/schema";
 import { audit, hashPassword, destroyAllSessions } from "@/lib/auth";
-import { apiRoot, jsonError } from "@/lib/guard";
+import { apiRoot, hasPlatformPermission, jsonError } from "@/lib/guard";
 import { PROFESSIONS, professionByKey } from "@/lib/professions";
 import { PROFESSION_MODULES } from "@/modules/registry";
 import { clientIp, emailSchema, passwordSchema, readJson, taxRateSchema } from "@/lib/security";
@@ -13,12 +13,13 @@ import { randomBytes } from "crypto";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:tenants");
   if (user instanceof NextResponse) return user;
   const rows = await db.select({
     id: tenants.id, name: tenants.name, slug: tenants.slug, profession: tenants.profession, status: tenants.status, plan: tenants.plan,
     monthly_fee_cents: tenants.monthly_fee_cents, commission_percent: tenants.commission_percent, commission_fixed_cents: tenants.commission_fixed_cents,
-    tax_rate_bp: tenants.tax_rate_bp, created_at: tenants.created_at,
+    tax_rate_bp: tenants.tax_rate_bp, created_at: tenants.created_at, ust_idnr: tenants.ust_idnr, steuernummer: tenants.steuernummer,
+    owner_name: sql<string | null>`(select name from users u where u.tenant_id = "tenants"."id" and u.role = 'tenant_owner' order by u.created_at limit 1)`,
     owner_email: sql<string | null>`(select email from users u where u.tenant_id = "tenants"."id" and u.role = 'tenant_owner' order by u.created_at limit 1)`,
     disabled_modules: sql<string[]>`coalesce((select array_agg(f.feature_key) from tenant_features f where f.tenant_id = "tenants"."id" and f.enabled = false), '{}')`,
   }).from(tenants).orderBy(desc(tenants.created_at));
@@ -42,7 +43,7 @@ const slugify = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ
   .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "shop";
 
 export async function POST(req: NextRequest) {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:tenants");
   if (user instanceof NextResponse) return user;
   const parsed = CreateBody.safeParse(await readJson(req));
   if (!parsed.success) return jsonError(parsed.error.issues.some((i) => i.path[0] === "owner_password") ? "WEAK_PASSWORD" : "INVALID_INPUT", 400);
@@ -74,16 +75,24 @@ const PatchBody = z.object({
   commission_fixed_cents: z.number().int().min(0).max(1000).optional(),
   tax_rate_bp: taxRateSchema.optional(),
   owner_password: passwordSchema.optional(),
+  // business & owner details
+  name: z.string().trim().min(2).max(200).optional(),
+  ust_idnr: z.string().trim().max(20).regex(/^[A-Z0-9 ]*$/i).optional(),
+  steuernummer: z.string().trim().max(30).regex(/^[0-9/ ]*$/).optional(),
+  owner_name: z.string().trim().min(2).max(120).optional(),
+  owner_email: emailSchema.optional(),
   // module key → enabled. Only modules that exist for the business's profession are accepted.
   modules: z.record(z.string().regex(/^[a-z_]{2,40}$/), z.boolean()).optional(),
 }).strict();
 
 export async function PATCH(req: NextRequest) {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:tenants");
   if (user instanceof NextResponse) return user;
   const parsed = PatchBody.safeParse(await readJson(req));
   if (!parsed.success) return jsonError(parsed.error.issues.some((i) => i.path[0] === "owner_password") ? "WEAK_PASSWORD" : "INVALID_INPUT", 400);
   const d = parsed.data;
+  const touchesFinance = d.plan !== undefined || d.commission_percent_bp !== undefined || d.commission_fixed_cents !== undefined || d.tax_rate_bp !== undefined;
+  if (touchesFinance && !hasPlatformPermission(user, "platform:finance")) return jsonError("FORBIDDEN_PERMISSION", 403);
   const [old] = await db.select().from(tenants).where(eq(tenants.id, d.tenant_id)).limit(1);
   if (!old) return jsonError("NOT_FOUND", 404);
   const patch: Record<string, unknown> = { updated_at: new Date() };
@@ -92,7 +101,21 @@ export async function PATCH(req: NextRequest) {
   if (d.commission_percent_bp != null) patch.commission_percent = d.commission_percent_bp;
   if (d.commission_fixed_cents != null) patch.commission_fixed_cents = d.commission_fixed_cents;
   if (d.tax_rate_bp != null) patch.tax_rate_bp = d.tax_rate_bp;
+  if (d.name) patch.name = d.name;
+  if (d.ust_idnr !== undefined) patch.ust_idnr = d.ust_idnr || null;
+  if (d.steuernummer !== undefined) patch.steuernummer = d.steuernummer || null;
   await db.update(tenants).set(patch).where(eq(tenants.id, d.tenant_id));
+  if (d.owner_name || d.owner_email) {
+    const [owner] = await db.select({ id: users.id, email: users.email }).from(users).where(and(eq(users.tenant_id, d.tenant_id), eq(users.role, "tenant_owner"))).limit(1);
+    if (owner) {
+      if (d.owner_email && d.owner_email !== owner.email) {
+        const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, d.owner_email)).limit(1);
+        if (taken) return jsonError("EMAIL_TAKEN", 409);
+      }
+      await db.update(users).set({ ...(d.owner_name ? { name: d.owner_name } : {}), ...(d.owner_email ? { email: d.owner_email } : {}) }).where(eq(users.id, owner.id));
+      if (d.owner_email && d.owner_email !== owner.email) await destroyAllSessions(owner.id);
+    }
+  }
   if (d.modules) {
     const allowed = new Set(PROFESSION_MODULES[old.profession] ?? []);
     for (const [key, enabled] of Object.entries(d.modules)) {

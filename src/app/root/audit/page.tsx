@@ -8,7 +8,7 @@ import { Card, Empty, PageHeader, Table, thCls, tdCls, cx } from "@/components/u
 export const dynamic = "force-dynamic";
 
 export default async function AuditPage() {
-  await requireRootPage();
+  await requireRootPage("platform:audit");
   const { t, locale } = await getI18n();
   const rows = await db.select({ id: audit_logs.id, action: audit_logs.action, entity: audit_logs.entity, entity_id: audit_logs.entity_id, ip: audit_logs.ip, created_at: audit_logs.created_at, actor: users.email, tenant: tenants.name })
     .from(audit_logs).leftJoin(users, eq(audit_logs.actor_id, users.id)).leftJoin(tenants, eq(audit_logs.tenant_id, tenants.id))

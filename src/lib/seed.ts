@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/db";
-import { users, tenants, products, services, appointments, invoices, invoice_items, transactions, features, accountant_links, fs_instructors, fs_vehicles, fs_students, fs_lessons, notifications, projects, tasks, queue_tickets, orders, loans, gigs, recipes, school_classes, subscriptions, platform_settings } from "@/db/schema";
+import { and, eq, like } from "drizzle-orm";
+import { users, tenants, products, services, appointments, invoices, invoice_items, transactions, features, accountant_links, fs_instructors, fs_vehicles, fs_students, fs_lessons, notifications, projects, tasks, queue_tickets, orders, loans, gigs, recipes, school_classes, subscriptions, platform_settings, profiles } from "@/db/schema";
 import { hashPassword } from "./auth";
 import { nextInvoiceNumber } from "./guard";
 import { PROFESSIONS } from "./professions";
@@ -16,6 +17,7 @@ const SAMPLE: Record<string, { products: [string, number, number, string][]; ser
   beauty: { products: [["Nagellack", 890, 30, "4005000000001"]], service: ["Maniküre", 60, 3500] },
   praxis: { products: [["Privatleistung Beratung", 4000, 999, "4006000000001"]], service: ["Kontrolltermin", 20, 0] },
   bekleidung: { products: [["T-Shirt Basic", 1999, 20, "4009998887776"], ["Jeans Slim", 5990, 8, "4009998887777"], ["Kapuzenpullover", 4490, 2, "4009998887778"]] },
+  apotheke: { products: [["Ibuprofen 400 mg, 20 St.", 599, 40, "4008000000001"], ["Paracetamol 500 mg, 20 St.", 349, 55, "4008000000002"], ["Nasenspray 15 ml", 499, 25, "4008000000003"], ["Amoxicillin 1000 mg (Rx)", 1250, 12, "4008000000004"], ["Vitamin D3 1000 I.E.", 899, 3, "4008000000005"], ["Sonnencreme LSF 50", 1499, 18, "4008000000006"]] },
   baeckerei: { products: [["Weizenbrot 500 g", 320, 40, "4007000000001"], ["Croissant", 140, 60, "4007000000002"], ["Laugenbrezel", 95, 80, "4007000000003"]] },
 };
 
@@ -124,6 +126,15 @@ export async function seedDemo() {
       ]);
     }
 
+    // pharmacy: reservable medicines (one prescription-only), 1,50 € reservation fee, public profiles
+    await tx.update(products).set({ reservable: true }).where(eq(products.tenant_id, T.apotheke));
+    await tx.update(products).set({ rx_required: true }).where(and(eq(products.tenant_id, T.apotheke), like(products.name, "%(Rx)%")));
+    await tx.update(tenants).set({ settings: { pharmacy_fee_cents: 150, pharmacy_hold_hours: 48 } }).where(eq(tenants.id, T.apotheke));
+    for (const [key, theme, headline] of [["apotheke", "green", "Ihre Apotheke um die Ecke · Berlin"], ["fahrschule", "glass", "Führerschein B, BE & A · Berlin"], ["friseur", "purple", "Haare mit Stil · Termine online"]] as const) {
+      const [o] = await tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, `owner@${key}.de`)).limit(1);
+      if (o) await tx.insert(profiles).values({ user_id: o.id, tenant_id: T[key], slug: `${key}-demo`, display_name: o.name, headline, theme, published: true, show_booking: key !== "apotheke", show_pharmacy: key === "apotheke",
+        phone: "+49 30 1234567", address: "Musterstraße 1, 10115 Berlin", links: [{ kind: "instagram", label: "Instagram", url: "https://instagram.com" }] });
+    }
     await tx.insert(users).values({ email: "staff@friseur.de", password_hash: pw, name: "Anna (Kasse)", role: "tenant_staff", tenant_id: T.friseur, permissions: STAFF_PRESETS.cashier });
     await tx.insert(projects).values({ tenant_id: T.design, name: "Logo-Relaunch Café Berlin", client_name: "Café Berlin", deadline: new Date(now + 5 * day), status: "open", amount_cents: 450000 });
     await tx.insert(tasks).values({ tenant_id: T.design, title: "Entwurf v2 an Kunden senden", status: "todo", due_at: new Date(now + 2 * day) });

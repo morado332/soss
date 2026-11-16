@@ -5,7 +5,7 @@ import { audit_logs, users, tenants } from "@/db/schema";
 import { apiRoot } from "@/lib/guard";
 export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:audit");
   if (user instanceof NextResponse) return user;
   const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get("limit")) || 50, 1), 200);
   const rows = await db.select({

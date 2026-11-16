@@ -4,8 +4,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tenants } from "@/db/schema";
 import { currentUser, hasPermission, isPlatformAdmin, type CurrentUser } from "./auth";
-import type { Permission } from "./permissions";
-import { tenantModules, type Tenant } from "./guard";
+import type { Permission, PlatformPermission } from "./permissions";
+import { hasPlatformPermission, tenantModules, type Tenant } from "./guard";
 import type { ModuleKey } from "@/modules/registry";
 
 /** Server-side guard for tenant pages: redirects instead of rendering anything unauthorised. */
@@ -21,9 +21,11 @@ export async function requireTenantPage(perm?: Permission, ownerOnly = false, mo
   return { user, tenant };
 }
 
-export async function requireRootPage(): Promise<CurrentUser> {
+/** Platform pages. Without a permission any platform staff member may open it (e.g. the overview). */
+export async function requireRootPage(perm?: PlatformPermission | "root"): Promise<CurrentUser> {
   const user = await currentUser();
   if (!user) redirect("/login");
   if (!isPlatformAdmin(user)) redirect("/dashboard");
+  if (perm && !hasPlatformPermission(user, perm)) redirect("/root");
   return user;
 }

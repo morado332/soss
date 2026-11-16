@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Logo } from "@/components/logo";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { CalendarX } from "lucide-react";
 import { db } from "@/db";
@@ -6,7 +7,7 @@ import { tenants, services } from "@/db/schema";
 import { getI18n, getTheme } from "@/lib/i18n-server";
 import { professionByKey, professionName } from "@/lib/professions";
 import { LanguageSwitcher, ThemeToggle } from "@/components/providers";
-import { Logo } from "@/components/ui";
+import {} from "@/components/ui";
 import BookingForm from "./booking-form";
 
 export const dynamic = "force-dynamic";

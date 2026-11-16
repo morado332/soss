@@ -15,6 +15,13 @@
       "when": 1794815792814,
       "tag": "0001_fahrschule_module",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794818301069,
+      "tag": "0002_platform_profiles_payments",
+      "breakpoints": true
     }
   ]
 }

@@ -128,12 +128,3 @@ export function Table({ head, children }: { head: ReactNode; children: ReactNode
     </div>
   );
 }
-
-export function Logo({ className }: { className?: string }) {
-  return (
-    <span className={cx("inline-flex items-center gap-2 font-semibold tracking-tight", className)}>
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-sm">A</span>
-      <span className="text-lg text-slate-900 dark:text-white">Arena</span>
-    </span>
-  );
-}

@@ -116,6 +116,8 @@ export const products = pgTable("products", {
   stock: integer("stock").default(0).notNull(),
   low_stock_threshold: integer("low_stock_threshold").default(5),
   variants: jsonb("variants").default([]), // [{size, color, stock, barcode}]
+  rx_required: boolean("rx_required").default(false).notNull(), // pharmacy: prescription needed (reserve only, no online payment)
+  reservable: boolean("reservable").default(false).notNull(),    // pharmacy: can be reserved from the public profile
   is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => [index("idx_products_tenant").on(t.tenant_id)]);
@@ -235,10 +237,12 @@ export const notifications = pgTable("notifications", {
   user_id: uuid("user_id").references(() => users.id),
   title: text("title").notNull(),
   body: text("body"),
-  type: text("type").default("info"),
+  type: text("type").default("info"), // info | booking | sale | reminder | ai
+  severity: text("severity").default("info").notNull(), // info | tip | warning | critical (AI insights)
+  dedupe_key: text("dedupe_key"), // AI insights: one notification per situation (e.g. "low_stock:<product>:<week>")
   is_read: boolean("is_read").default(false).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => [uniqueIndex("uq_notifications_dedupe").on(t.tenant_id, t.dedupe_key)]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -282,6 +286,11 @@ export const orders = pgTable("orders", {
   status: text("status").default("new").notNull(),
   source: text("source").default("online"), // online | pos | lieferando | uber_eats | wolt
   requires_prescription: boolean("requires_prescription").default(false).notNull(),
+  customer_phone: text("customer_phone"),
+  reservation_fee_cents: integer("reservation_fee_cents").default(0).notNull(),
+  payment_status: text("payment_status").default("none").notNull(), // none | pending | paid | failed
+  stripe_session_id: text("stripe_session_id"),
+  pickup_code: text("pickup_code"),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -324,6 +333,42 @@ export const school_classes = pgTable("school_classes", {
   homework: jsonb("homework").default([]),
   announcements: jsonb("announcements").default([]),
 });
+
+// ---------------------------------------------------------------- Public profiles (one per user)
+export const profiles = pgTable("profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  user_id: uuid("user_id").references(() => users.id).notNull(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id),
+  slug: text("slug").notNull(),
+  display_name: text("display_name").notNull(),
+  headline: text("headline"),
+  bio: text("bio"),
+  avatar: text("avatar"), // small data URL (png/jpeg/webp ≤ 300 KB)
+  theme: text("theme").default("glass").notNull(), // glass | white | purple | green | dark | ocean | sunset | rose
+  links: jsonb("links").default([]).notNull(), // [{ kind, label, url }]
+  phone: text("phone"),
+  email: text("email"),
+  whatsapp: text("whatsapp"),
+  website: text("website"),
+  address: text("address"),
+  show_booking: boolean("show_booking").default(false).notNull(),
+  show_pharmacy: boolean("show_pharmacy").default(false).notNull(),
+  published: boolean("published").default(false).notNull(),
+  views: integer("views").default(0).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [uniqueIndex("uq_profiles_user").on(t.user_id), uniqueIndex("uq_profiles_slug").on(t.slug)]);
+
+// ---------------------------------------------------------------- Card terminals per business
+export const terminal_readers = pgTable("terminal_readers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  provider: text("provider").notNull(), // stripe | sumup
+  label: text("label").notNull(),
+  reader_id: text("reader_id").notNull(), // Stripe tmr_… or SumUp reader/merchant id
+  is_active: boolean("is_active").default(true).notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("idx_terminal_readers_tenant").on(t.tenant_id)]);
 
 // Profession modules keep their tables next to their code; re-exported here for convenience.
 export * from "../modules/fahrschule/schema";

@@ -12,9 +12,13 @@ function setCookie(name: string, value: string) {
   document.cookie = `${name}=${value}; path=/; max-age=31536000; samesite=lax`;
 }
 
-export function Providers({ lang, children }: { lang: Lang; children: ReactNode }) {
+export type PublicBranding = { siteName: string; logo: string | null };
+const BrandingCtx = createContext<PublicBranding>({ siteName: "Arena", logo: null });
+export const useBranding = () => useContext(BrandingCtx);
+
+export function Providers({ lang, branding, children }: { lang: Lang; branding: PublicBranding; children: ReactNode }) {
   const value = useMemo<Ctx>(() => ({ lang, t: makeT(lang), locale: locale(lang), err: (c) => errorText(lang, c) }), [lang]);
-  return <I18nCtx.Provider value={value}>{children}</I18nCtx.Provider>;
+  return <BrandingCtx.Provider value={branding}><I18nCtx.Provider value={value}>{children}</I18nCtx.Provider></BrandingCtx.Provider>;
 }
 
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {

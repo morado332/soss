@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, CalendarDays, Package, Receipt, Calculator, Sparkles, ChartColumn, Settings,
   Building2, Users, ScrollText, KeyRound, Menu, X, LogOut, Bell, ExternalLink, ShieldCheck, TriangleAlert,
-  BellRing, Ticket, GraduationCap, UserCheck, Car, CalendarClock, BookOpen, type LucideIcon,
+  BellRing, Ticket, GraduationCap, UserCheck, Car, CalendarClock, BookOpen, Pill, UsersRound, Palette, CreditCard, IdCard, type LucideIcon,
 } from "lucide-react";
-import { Logo, cx } from "./ui";
+import { cx } from "./ui";
 import { LanguageSwitcher, ThemeToggle, useI18n } from "./providers";
 import type { DictKey } from "@/lib/i18n";
 
@@ -16,10 +17,67 @@ const ICONS: Record<string, LucideIcon> = {
   accountant: Calculator, ai: Sparkles, reports: ChartColumn, settings: Settings, tenants: Building2, users: Users,
   audit: ScrollText, account: KeyRound, shield: ShieldCheck,
   reminders: BellRing, queue: Ticket, students: GraduationCap, instructors: UserCheck, vehicles: Car, lessons: CalendarClock, theory: BookOpen,
+  pharmacy: Pill, team: UsersRound, branding: Palette, payments: CreditCard, profile: IdCard,
 };
 
 export type NavItem = { href: string; label: DictKey; icon: keyof typeof ICONS; exact?: boolean };
 export type Notif = { id: string; title: string; body: string | null; created_at: string };
+export type AiNotif = Notif & { severity: string; is_read: boolean };
+
+/** Renders an AI insight stored as i18n key + JSON variables. */
+export function useAiText() {
+  const { t } = useI18n();
+  return (n: { title: string; body: string | null }) => {
+    let vars: Record<string, string | number> = {};
+    try { vars = JSON.parse(n.body ?? "{}"); } catch { /* plain text */ }
+    return n.title.startsWith("ai_") ? t(n.title as DictKey, vars) : n.title;
+  };
+}
+const SEVERITY: Record<string, string> = {
+  critical: "border-s-red-500 bg-red-50/60 dark:bg-red-950/30", warning: "border-s-amber-500 bg-amber-50/60 dark:bg-amber-950/30",
+  tip: "border-s-violet-500 bg-violet-50/60 dark:bg-violet-950/30", info: "border-s-sky-500 bg-sky-50/50 dark:bg-sky-950/30",
+};
+
+function AiCenter({ items }: { items: AiNotif[] }) {
+  const { t, locale } = useI18n();
+  const text = useAiText();
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState(items);
+  const unread = list.filter((n) => !n.is_read).length;
+  const toggle = async () => {
+    const next = !open; setOpen(next);
+    if (next && unread) {
+      await fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "ai" }) });
+      setList((l) => l.map((n) => ({ ...n, is_read: true })));
+    }
+  };
+  return (
+    <div className="relative">
+      <button onClick={toggle} aria-label={t("ai_center")} title={t("ai_center")} className="relative grid h-9 w-9 place-items-center rounded-lg border border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100 dark:border-violet-900 dark:bg-violet-500/10 dark:text-violet-300">
+        <Sparkles className="h-4 w-4" />
+        {unread > 0 && <span className="absolute -end-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-violet-600 px-1 text-[10px] font-bold text-white">{unread}</span>}
+      </button>
+      {open && (
+        <div className="absolute end-0 z-40 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+            <p className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-violet-500" />{t("ai_center")}</p>
+            <Link href="/dashboard/ai" onClick={() => setOpen(false)} className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("viewAll")}</Link>
+          </div>
+          {list.length === 0 ? <p className="px-4 py-8 text-center text-sm text-slate-500">{t("ai_none")}</p> : (
+            <ul className="max-h-[26rem] space-y-2 overflow-y-auto p-3">
+              {list.map((n) => (
+                <li key={n.id} className={cx("rounded-lg border-s-4 px-3 py-2.5", SEVERITY[n.severity] ?? SEVERITY.info)}>
+                  <p className="text-sm leading-snug">{text(n)}</p>
+                  <p className="mt-1 text-[11px] text-slate-400">{t(`ai_sev_${n.severity}` as DictKey)} · {new Date(n.created_at).toLocaleString(locale, { dateStyle: "short", timeStyle: "short" })}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function LogoutButton({ className }: { className?: string }) {
   const { t } = useI18n();
@@ -35,12 +93,12 @@ export function LogoutButton({ className }: { className?: string }) {
 }
 
 export function AppShell({
-  nav, children, user, context, theme, notifications = [], banner,
+  nav, children, user, context, theme, notifications = [], banner, aiNotifications,
 }: {
   nav: NavItem[]; children: ReactNode; theme: "dark" | "light";
   user: { name: string; email: string; role: DictKey };
   context?: { title: string; subtitle?: string; icon?: string; link?: { href: string; label: string } };
-  notifications?: Notif[]; banner?: "suspended" | null;
+  notifications?: Notif[]; banner?: "suspended" | null; aiNotifications?: AiNotif[];
 }) {
   const { t, locale } = useI18n();
   const pathname = usePathname();
@@ -113,6 +171,7 @@ export function AppShell({
           <div className="flex-1" />
           <LanguageSwitcher />
           <ThemeToggle initial={theme} />
+          {aiNotifications && <AiCenter items={aiNotifications} />}
           {notifications !== undefined && (
             <div className="relative">
               <button onClick={() => setBell((b) => !b)} aria-label={t("nav_notifications")} className="relative grid h-9 w-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800">

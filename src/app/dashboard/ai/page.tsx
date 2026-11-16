@@ -3,12 +3,16 @@ import { TrendingUp, TrendingDown, Receipt, LineChart, Lightbulb, Package, Megap
 import { db } from "@/db";
 import { products, invoice_items, invoices } from "@/db/schema";
 import { requireTenantPage } from "@/lib/page-guard";
+import { tenantModules } from "@/lib/guard";
+import { latestInsights, maybeGenerateInsights } from "@/core/ai-insights";
+import type { DictKey } from "@/lib/i18n";
 import { eur } from "@/lib/commission";
 import { getI18n } from "@/lib/i18n-server";
 import { monthTotals, serverNow } from "@/lib/stats";
 import { Card, Stat, Empty, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+const SEV: Record<string, string> = { critical: "border-s-red-500", warning: "border-s-amber-500", tip: "border-s-violet-500", info: "border-s-sky-500" };
 
 // AI advisor — deterministic insights computed from the tenant's own data only.
 // Integration point for Claude (ANTHROPIC_API_KEY): send these aggregates, never raw customer data.
@@ -40,9 +44,28 @@ export default async function AiPage() {
     { icon: Sun, text: seasonal },
   ];
 
+  await maybeGenerateInsights(tenant, await tenantModules(tenant));
+  const feed = await latestInsights(tid, 15);
   return (
     <div className="space-y-6">
       <PageHeader title={t("ai_title")} description={t("ai_sub")} />
+      <Card title={t("ai_feed")} padded={false}>
+        {feed.length === 0 ? <div className="p-5"><Empty icon={Lightbulb} text={t("ai_none")} /></div> : (
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            {feed.map((n) => {
+              let vars: Record<string, string | number> = {};
+              try { vars = JSON.parse(n.body ?? "{}"); } catch { /* plain */ }
+              const sev = (n as { severity?: string }).severity ?? "info";
+              return (
+                <li key={n.id} className={`flex items-start gap-3 border-s-4 px-5 py-3 text-sm ${SEV[sev] ?? SEV.info}`}>
+                  <span className="min-w-0 flex-1">{n.title.startsWith("ai_") ? t(n.title as DictKey, vars) : n.title}</span>
+                  <span className="shrink-0 text-xs text-slate-500">{t(`ai_sev_${sev}` as DictKey)} · {new Date(n.created_at).toLocaleDateString(locale)}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label={t("ai_month")} value={money(last30.gross)} sub={t("ai_vsPrev", { p: `${growth >= 0 ? "+" : ""}${growth} %` })} icon={growth >= 0 ? TrendingUp : TrendingDown} tone={growth >= 0 ? "emerald" : "rose"} />
         <Stat label={t("ai_tx")} value={String(last30.count)} sub={t("ai_avg", { v: money(avg) })} icon={Receipt} />

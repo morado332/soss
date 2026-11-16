@@ -7,11 +7,11 @@ export type ModuleKey =
   // shared core modules
   | "appointments" | "reminders" | "pos" | "products" | "invoices" | "accountant" | "ai" | "reports" | "queue"
   // profession modules
-  | "fahrschule";
+  | "fahrschule" | "pharmacy";
 
 export type NavIcon =
   | "dashboard" | "pos" | "appointments" | "products" | "invoices" | "accountant" | "ai" | "reports" | "settings"
-  | "reminders" | "queue" | "students" | "instructors" | "vehicles" | "lessons" | "theory";
+  | "reminders" | "queue" | "students" | "instructors" | "vehicles" | "lessons" | "theory" | "pharmacy";
 
 export type ModuleNav = { href: string; label: DictKey; icon: NavIcon; perm?: string; ownerOnly?: boolean };
 
@@ -24,6 +24,7 @@ export const MODULE_NAV: Record<ModuleKey, ModuleNav[]> = {
     { href: "/dashboard/m/fahrschule/vehicles", label: "fs_nav_vehicles", icon: "vehicles", perm: "appointments:read" },
     { href: "/dashboard/m/fahrschule/theory", label: "fs_nav_theory", icon: "theory", perm: "appointments:read" },
   ],
+  pharmacy: [{ href: "/dashboard/m/pharmacy/reservations", label: "ph_nav", icon: "pharmacy", perm: "pos:use" }],
   appointments: [{ href: "/dashboard/appointments", label: "nav_appointments", icon: "appointments", perm: "appointments:read" }],
   queue: [{ href: "/dashboard/queue", label: "q_title", icon: "queue", perm: "appointments:read" }],
   reminders: [{ href: "/dashboard/reminders", label: "nav_reminders", icon: "reminders", perm: "appointments:read" }],
@@ -41,19 +42,19 @@ export const MODULE_NAV: Record<ModuleKey, ModuleNav[]> = {
  */
 export const PROFESSION_MODULES: Record<string, ModuleKey[]> = {
   fahrschule: ["fahrschule", "appointments", "reminders", "invoices", "accountant", "ai"],
-  friseur: ["appointments", "reminders", "pos", "invoices", "reports", "accountant"],
+  friseur: ["appointments", "reminders", "pos", "invoices", "reports", "ai", "accountant"],
   kiosk: ["pos", "products", "invoices", "reports", "ai", "accountant"],
-  design: ["invoices", "reports", "accountant"],
-  steuerbuero: ["invoices", "accountant"],
-  bekleidung: ["pos", "products", "invoices", "reports", "accountant"],
-  praxis: ["queue", "appointments", "reminders", "invoices"],
-  apotheke: ["pos", "products", "invoices", "reports", "ai", "accountant"],
-  kuenstler: ["invoices", "accountant"],
-  restaurant: ["pos", "products", "invoices", "reports", "accountant"],
-  beauty: ["appointments", "reminders", "invoices", "accountant"],
-  buchhandlung: ["pos", "products", "invoices", "reports", "accountant"],
-  schule: ["appointments"],
-  baeckerei: ["pos", "products", "invoices", "reports", "accountant"],
+  design: ["invoices", "reports", "ai", "accountant"],
+  steuerbuero: ["invoices", "ai", "accountant"],
+  bekleidung: ["pos", "products", "invoices", "reports", "ai", "accountant"],
+  praxis: ["queue", "appointments", "reminders", "invoices", "ai"],
+  apotheke: ["pharmacy", "pos", "products", "invoices", "reports", "ai", "accountant"],
+  kuenstler: ["invoices", "ai", "accountant"],
+  restaurant: ["pos", "products", "invoices", "reports", "ai", "accountant"],
+  beauty: ["appointments", "reminders", "invoices", "ai", "accountant"],
+  buchhandlung: ["pos", "products", "invoices", "reports", "ai", "accountant"],
+  schule: ["appointments", "ai"],
+  baeckerei: ["pos", "products", "invoices", "reports", "ai", "accountant"],
 };
 
 export const ALL_MODULES = Object.keys(MODULE_NAV) as ModuleKey[];

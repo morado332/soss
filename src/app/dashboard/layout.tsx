@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
+import { maybeGenerateInsights } from "@/core/ai-insights";
 import { db } from "@/db";
 import { tenants, notifications } from "@/db/schema";
 import { currentUser, hasPermission, isPlatformAdmin } from "@/lib/auth";
@@ -23,6 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (user.role === "accountant") {
     const nav: NavItem[] = [
       { href: "/dashboard", label: "nav_clients", icon: "users", exact: true },
+      { href: "/dashboard/profile", label: "p2_myProfile", icon: "profile" },
       { href: "/dashboard/settings", label: "nav_settings", icon: "settings" },
     ];
     return (
@@ -35,11 +37,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user.tenant_id) redirect("/login");
   const [tenant] = await db.select().from(tenants).where(eq(tenants.id, user.tenant_id)).limit(1);
   if (!tenant) redirect("/login");
+  const modulesEarly = await tenantModules(tenant);
+  // AI advisor: refresh this business's insights (at most hourly), then load both notification streams.
+  await maybeGenerateInsights(tenant, modulesEarly);
   const notifs = await db.select({ id: notifications.id, title: notifications.title, body: notifications.body, created_at: notifications.created_at })
-    .from(notifications).where(and(eq(notifications.tenant_id, tenant.id), eq(notifications.is_read, false))).orderBy(desc(notifications.created_at)).limit(8);
+    .from(notifications).where(and(eq(notifications.tenant_id, tenant.id), eq(notifications.is_read, false), ne(notifications.type, "ai"))).orderBy(desc(notifications.created_at)).limit(8);
+  const aiNotifs = modulesEarly.has("ai") ? await db.select({ id: notifications.id, title: notifications.title, body: notifications.body, severity: notifications.severity, is_read: notifications.is_read, created_at: notifications.created_at })
+    .from(notifications).where(and(eq(notifications.tenant_id, tenant.id), eq(notifications.type, "ai"))).orderBy(desc(notifications.created_at)).limit(15) : null;
   const prof = professionByKey(tenant.profession);
   // Menu = only the modules of this business type (see src/modules/registry.ts), filtered by staff permissions.
-  const modules = await tenantModules(tenant);
+  const modules = modulesEarly;
   const nav: NavItem[] = [{ href: "/dashboard", label: "nav_dashboard", icon: "dashboard", exact: true }];
   for (const m of modules) {
     for (const item of MODULE_NAV[m]) {
@@ -48,12 +55,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
       nav.push({ href: item.href, label: item.label, icon: item.icon });
     }
   }
+  nav.push({ href: "/dashboard/profile", label: "p2_myProfile", icon: "profile" });
   nav.push({ href: "/dashboard/settings", label: "nav_settings", icon: "settings" });
   return (
     <AppShell
       nav={nav} theme={theme} user={{ name: user.name, email: user.email, role }}
       context={{ title: tenant.name, subtitle: `${professionName(prof, lang)} · ${tenant.plan}`, icon: prof.icon, link: { href: `/book/${tenant.slug}`, label: t("bookingLink") } }}
       notifications={notifs.map((n) => ({ ...n, created_at: n.created_at.toISOString() }))}
+      aiNotifications={aiNotifs?.map((n) => ({ ...n, created_at: n.created_at.toISOString() })) ?? undefined}
       banner={tenant.status === "suspended" || tenant.status === "cancelled" ? "suspended" : null}
     >
       {children}

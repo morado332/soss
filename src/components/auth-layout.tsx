@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { Logo } from "@/components/logo";
 import type { ReactNode } from "react";
 import { ShieldCheck, Receipt, Calculator } from "lucide-react";
-import { Logo } from "./ui";
+import {} from "./ui";
 import { LanguageSwitcher, ThemeToggle } from "./providers";
 import type { TFn } from "@/lib/i18n";
 

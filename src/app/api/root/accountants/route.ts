@@ -10,7 +10,7 @@ import { clientIp, emailSchema, passwordSchema, readJson } from "@/lib/security"
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:accountants");
   if (user instanceof NextResponse) return user;
   const rows = await db.select({
     id: users.id, name: users.name, email: users.email, accountant_id: users.accountant_id, is_active: users.is_active, last_login_at: users.last_login_at,
@@ -22,7 +22,7 @@ export async function GET() {
 const Body = z.object({ name: z.string().trim().min(2).max(120), email: emailSchema, password: passwordSchema }).strict();
 
 export async function POST(req: NextRequest) {
-  const user = await apiRoot();
+  const user = await apiRoot("platform:accountants");
   if (user instanceof NextResponse) return user;
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return jsonError(parsed.error.issues.some((i) => i.path[0] === "password") ? "WEAK_PASSWORD" : "INVALID_INPUT", 400);
