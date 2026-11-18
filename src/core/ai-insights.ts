@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { notifications, products, invoice_items, invoices, appointments, transactions, tenants, fs_vehicles, fs_students, fs_lessons } from "@/db/schema";
+import { notifications, products, invoice_items, invoices, appointments, transactions, tenants, fs_vehicles, fs_students, fs_lessons, biz_records } from "@/db/schema";
 import type { Tenant } from "@/lib/guard";
 import type { ModuleKey } from "@/modules/registry";
 
@@ -82,10 +82,43 @@ async function collect(tenant: Tenant, mods: Set<ModuleKey>): Promise<Insight[]>
     void fs_lessons;
   }
 
+  if (mods.has("expiry") || mods.has("batches")) {
+    const soon = new Date(now + 30 * 86_400_000).toISOString().slice(0, 10), today = new Date(now).toISOString().slice(0, 10);
+    const rows = await db.select({ id: biz_records.id, data: biz_records.data, product: products.name }).from(biz_records)
+      .leftJoin(products, and(eq(products.tenant_id, tid), sql`${products.id}::text = ${biz_records.data}->>'product'`))
+      .where(and(eq(biz_records.tenant_id, tid), eq(biz_records.kind, "batches"), sql`${biz_records.data}->>'expiry' <= ${soon}`)).limit(50);
+    for (const r of rows) {
+      const d = r.data as { expiry: string; batch_no: string; qty: number };
+      if (d.expiry < today) out.push({ key: `expired:${r.id}`, severity: "critical", msg: "ai_expired", vars: { name: r.product ?? "?", batch: d.batch_no, qty: d.qty } });
+      else out.push({ key: `expiring:${r.id}`, severity: "warning", msg: "ai_expiring", vars: { name: r.product ?? "?", batch: d.batch_no, date: d.expiry, qty: d.qty } });
+    }
+  }
+
+  if (mods.has("ingredients")) {
+    const rows = await db.select({ id: biz_records.id, data: biz_records.data }).from(biz_records)
+      .where(and(eq(biz_records.tenant_id, tid), eq(biz_records.kind, "ingredients"), sql`(${biz_records.data}->>'qty')::numeric <= coalesce((${biz_records.data}->>'min_qty')::numeric, 0)`)).limit(30);
+    for (const r of rows) { const d = r.data as { name: string; qty?: number; unit?: string }; out.push({ key: `ingr:${r.id}:${week()}`, severity: "warning", msg: "ai_ingredient_low", vars: { name: d.name, qty: d.qty ?? 0, unit: d.unit ?? "" } }); }
+  }
+
+  if (mods.has("debts")) {
+    const [{ n, v }] = await db.select({ n: sql<number>`count(*)::int`, v: sql<number>`coalesce(sum(${invoices.total_cents}),0)::int` }).from(invoices)
+      .where(and(eq(invoices.tenant_id, tid), eq(invoices.status, "issued"), eq(invoices.type, "invoice"), lt(invoices.issued_at, new Date(now - 60 * 86_400_000))));
+    if (n > 0) out.push({ key: `aged:${week()}`, severity: "critical", msg: "ai_debts_aged", vars: { n, sum: (v / 100).toFixed(2) } });
+  }
+
+  if (mods.has("tasks")) {
+    const today = new Date(now).toISOString().slice(0, 10);
+    const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(biz_records).where(and(eq(biz_records.tenant_id, tid), eq(biz_records.kind, "tasks"),
+      sql`${biz_records.data}->>'status' <> 'done'`, sql`${biz_records.data}->>'due' < ${today}`));
+    if (n > 0) out.push({ key: `tasks:${today}`, severity: "info", msg: "ai_tasks_overdue", vars: { n } });
+  }
+
   // monthly seasonal advice by profession
   const m = new Date().getMonth();
   const season = m >= 5 && m <= 7 ? "summer" : m >= 10 || m <= 1 ? "winter" : m >= 2 && m <= 4 ? "spring" : "autumn";
-  const prof = ["apotheke", "kiosk", "restaurant", "bekleidung", "fahrschule", "friseur", "beauty", "baeckerei"].includes(tenant.profession) ? tenant.profession : "generic";
+  const alias: Record<string, string> = { supermarkt: "kiosk", cafe: "restaurant" };
+  const p0 = alias[tenant.profession] ?? tenant.profession;
+  const prof = ["apotheke", "kiosk", "restaurant", "bekleidung", "fahrschule", "friseur", "beauty", "baeckerei"].includes(p0) ? p0 : "generic";
   out.push({ key: `season:${month()}`, severity: "tip", msg: `ai_season_${prof}_${season}` });
   return out;
 }

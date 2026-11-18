@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { tenants, services, appointments, notifications } from "@/db/schema";
+import { tenants, services, appointments, notifications, biz_records } from "@/db/schema";
 import { hasConflict } from "@/lib/appointments";
 import { rateLimit } from "@/lib/ratelimit";
 import { clientIp, readJson } from "@/lib/security";
@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
   if (starts.getTime() < Date.now() + 5 * 60_000) return jsonError("PAST_TIME", 400);
   if (starts.getTime() > Date.now() + 365 * 86_400_000) return jsonError("INVALID_INPUT", 400);
   const ends = new Date(starts.getTime() + duration * 60000);
+  // closing days / holidays entered by the business block online booking (dates compared in Europe/Berlin)
+  const day = starts.toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
+  const [closed] = await db.select({ id: biz_records.id }).from(biz_records).where(and(eq(biz_records.tenant_id, tenant.id), eq(biz_records.kind, "closing_days"),
+    sql`${biz_records.data}->>'from' <= ${day}`, sql`${biz_records.data}->>'to' >= ${day}`)).limit(1);
+  if (closed) return jsonError("CLOSED_DAY", 409);
 
   const ok = await db.transaction(async (tx) => {
     if (await hasConflict(tx, tenant.id, starts, ends)) return false;

@@ -9,7 +9,8 @@ import { AppShell, type NavItem } from "@/components/app-shell";
 import { getI18n, getTheme } from "@/lib/i18n-server";
 import type { DictKey } from "@/lib/i18n";
 import { tenantModules } from "@/lib/guard";
-import { MODULE_NAV } from "@/modules/registry";
+import { MODULE_NAV, NAV_GROUPS } from "@/modules/registry";
+import type { Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -48,15 +49,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Menu = only the modules of this business type (see src/modules/registry.ts), filtered by staff permissions.
   const modules = modulesEarly;
   const nav: NavItem[] = [{ href: "/dashboard", label: "nav_dashboard", icon: "dashboard", exact: true }];
+  const items: (NavItem & { order: number })[] = [];
   for (const m of modules) {
     for (const item of MODULE_NAV[m]) {
       if (item.ownerOnly && user.role !== "tenant_owner") continue;
-      if (item.perm && !hasPermission(user, item.perm)) continue;
-      nav.push({ href: item.href, label: item.label, icon: item.icon });
+      if (item.perm && !hasPermission(user, item.perm as Permission)) continue;
+      const g = item.group ?? "main";
+      items.push({ href: item.href, label: item.label, icon: item.icon, group: `grp_${g}` as DictKey, order: NAV_GROUPS.indexOf(g) * 1000 + items.length });
     }
   }
-  nav.push({ href: "/dashboard/profile", label: "p2_myProfile", icon: "profile" });
-  nav.push({ href: "/dashboard/settings", label: "nav_settings", icon: "settings" });
+  // grouped sidebar (sections in a fixed order, entries in the profession's order inside a section)
+  nav.push(...items.sort((a, b) => a.order - b.order).map(({ order: _o, ...n }) => n));
+  nav.push({ href: "/dashboard/profile", label: "p2_myProfile", icon: "profile", group: "grp_account" });
+  nav.push({ href: "/dashboard/settings", label: "nav_settings", icon: "settings", group: "grp_account" });
   return (
     <AppShell
       nav={nav} theme={theme} user={{ name: user.name, email: user.email, role }}

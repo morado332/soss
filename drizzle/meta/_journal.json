@@ -22,6 +22,13 @@
       "when": 1794818301069,
       "tag": "0002_platform_profiles_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795008498246,
+      "tag": "0003_business_records",
+      "breakpoints": true
     }
   ]
 }

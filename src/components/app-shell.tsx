@@ -6,7 +6,10 @@ import { useState, type ReactNode } from "react";
 import {
   LayoutDashboard, ShoppingCart, CalendarDays, Package, Receipt, Calculator, Sparkles, ChartColumn, Settings,
   Building2, Users, ScrollText, KeyRound, Menu, X, LogOut, Bell, ExternalLink, ShieldCheck, TriangleAlert,
-  BellRing, Ticket, GraduationCap, UserCheck, Car, CalendarClock, BookOpen, Pill, UsersRound, Palette, CreditCard, IdCard, type LucideIcon,
+  BellRing, Ticket, GraduationCap, UserCheck, Car, CalendarClock, BookOpen, Pill, UsersRound, Palette, CreditCard, IdCard,
+  Contact, Truck, ShoppingBasket, Wallet, TrendingUp, Hourglass, ListTodo, MessagesSquare, Clock, BadgePercent, BookOpenText, Wheat, ChefHat,
+  Armchair, Barcode, CalendarX, Layers, FolderTree, Shirt, Tags, ChartNoAxesCombined, BriefcaseBusiness, IdCardLanyard, HeartPulse, Stethoscope,
+  UserX, FileHeart, FlaskConical, Search, CalendarOff, FileText, FolderKanban, ClipboardList, Coins, Home, UserRoundPen, UserRoundSearch, Eye, type LucideIcon,
 } from "lucide-react";
 import { cx } from "./ui";
 import { LanguageSwitcher, ThemeToggle, useI18n } from "./providers";
@@ -18,9 +21,15 @@ const ICONS: Record<string, LucideIcon> = {
   audit: ScrollText, account: KeyRound, shield: ShieldCheck,
   reminders: BellRing, queue: Ticket, students: GraduationCap, instructors: UserCheck, vehicles: Car, lessons: CalendarClock, theory: BookOpen,
   pharmacy: Pill, team: UsersRound, branding: Palette, payments: CreditCard, profile: IdCard,
+  customers: Contact, suppliers: Truck, purchases: ShoppingBasket, expenses: Wallet, profits: TrendingUp, debts: Hourglass, tasks: ListTodo,
+  messages: MessagesSquare, attendance: Clock, promotions: BadgePercent, menu: BookOpenText, ingredients: Wheat, kitchen: ChefHat, tables: Armchair,
+  barcode: Barcode, expiry: CalendarX, batches: Layers, drugcats: FolderTree, variants: Shirt, categories: Tags, sales: ChartNoAxesCombined,
+  salesreps: BriefcaseBusiness, employees: IdCardLanyard, patients: HeartPulse, services: Stethoscope, noshow: UserX, prescriptions: FileHeart,
+  lab: FlaskConical, search: Search, closing: CalendarOff, vouchers: FileText, projects: FolderKanban, progress: ClipboardList, dailyprice: Coins,
+  properties: Home, sellers: UserRoundPen, buyers: UserRoundSearch, viewings: Eye,
 };
 
-export type NavItem = { href: string; label: DictKey; icon: keyof typeof ICONS; exact?: boolean };
+export type NavItem = { href: string; label: DictKey; icon: keyof typeof ICONS; exact?: boolean; group?: DictKey };
 export type Notif = { id: string; title: string; body: string | null; created_at: string };
 export type AiNotif = Notif & { severity: string; is_read: boolean };
 
@@ -130,16 +139,20 @@ export function AppShell({
         </div>
       )}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-4">
-        {nav.map((n) => {
+        {nav.map((n, i) => {
           const Icon = ICONS[n.icon] ?? LayoutDashboard;
           const active = isActive(n);
+          const heading = n.group && n.group !== nav[i - 1]?.group ? n.group : null;
           return (
-            <Link key={n.href} href={n.href} onClick={() => setOpen(false)}
+            <div key={n.href}>
+            {heading && <p className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t(heading)}</p>}
+            <Link href={n.href} onClick={() => setOpen(false)}
               className={cx("group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
                 active ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white")}>
               <Icon className={cx("h-[18px] w-[18px]", active ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300")} />
               {t(n.label)}
             </Link>
+            </div>
           );
         })}
       </nav>
@@ -158,14 +171,14 @@ export function AppShell({
 
   return (
     <div className="min-h-screen">
-      <aside className="fixed inset-y-0 start-0 z-40 hidden w-64 border-e border-slate-200 bg-white lg:block dark:border-slate-800 dark:bg-slate-900">{sidebar}</aside>
+      <aside className="no-print fixed inset-y-0 start-0 z-40 hidden w-64 border-e border-slate-200 bg-white lg:block dark:border-slate-800 dark:bg-slate-900">{sidebar}</aside>
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <aside className="absolute inset-y-0 start-0 w-72 max-w-[85%] bg-white shadow-xl dark:bg-slate-900">{sidebar}</aside>
         </div>
       )}
-      <div className="lg:ps-64">
+      <div className="lg:ps-64 print:!ps-0">
         <header className="no-print sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white/80 px-4 backdrop-blur md:px-8 dark:border-slate-800 dark:bg-slate-950/80">
           <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden dark:text-slate-300 dark:hover:bg-slate-800" onClick={() => setOpen(true)} aria-label="Menu"><Menu className="h-5 w-5" /></button>
           <div className="flex-1" />

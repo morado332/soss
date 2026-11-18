@@ -13,6 +13,7 @@ export const isRtl = (l: Lang) => l === "ar";
 export const locale = (l: Lang) => (l === "de" ? "de-DE" : l === "en" ? "en-GB" : "ar-u-nu-latn");
 
 import { D2 } from "./i18n-v2";
+import { D3 } from "./i18n-v3";
 
 const D = {
   // ---- generic
@@ -579,6 +580,7 @@ const D = {
   err_ALREADY_INVOICED: ["Bereits abgerechnet – Änderungen nur per Storno.", "Already invoiced — changes only via cancellation.", "تمت فوترتها — التعديل فقط عبر فاتورة إلغاء."],
   err_BAD_ORIGIN: ["Anfrage blockiert (Herkunft ungültig).", "Request blocked (invalid origin).", "تم حظر الطلب (مصدر غير صالح)."],
   ...D2,
+  ...D3,
 } as const satisfies Record<string, readonly [string, string, string]>;
 
 export type DictKey = keyof typeof D;

@@ -372,3 +372,16 @@ export const terminal_readers = pgTable("terminal_readers", {
 
 // Profession modules keep their tables next to their code; re-exported here for convenience.
 export * from "../modules/fahrschule/schema";
+
+// Generic business records (customers, suppliers, tasks, patients, expenses, …). The record "kind" decides
+// the fields (validated server-side against src/modules/business/kinds.ts); always scoped by tenant_id.
+export const biz_records = pgTable("biz_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenant_id: uuid("tenant_id").references(() => tenants.id).notNull(),
+  kind: text("kind").notNull(),
+  data: jsonb("data").default({}).notNull(),
+  search: text("search").default("").notNull(), // lower-cased text of the searchable fields
+  created_by: uuid("created_by").references(() => users.id),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [index("idx_biz_records_tenant_kind").on(t.tenant_id, t.kind, t.created_at)]);
